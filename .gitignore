@@ -1,0 +1,63 @@
+# === Carpetas y archivos de datos (no subir a GitHub) ===
+data/
+data/
+results/
+*.csv
+*.xlsx
+*.rds
+*.db
+*.sqlite
+
+# === Archivos temporales del sistema (macOS) ===
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+# === Caché y archivos temporales de R / RStudio ===
+.Rproj.user/
+.Rhistory
+.Rdata
+.Rproj
+*.Rproj
+*.Rhistory
+*.Rdata
+*.sqlite-shm
+*.sqlite-wal
+
+# === Caché de R Markdown y knitr ===
+knitr/
+cache/
+*_cache/
+
+# === Paquetes y librerías locales ===
+/renv/library/
+/renv/staging/
+/renv/snapshot.R
+/renv/activate.R
+/renv/settings.json
+
+# === Archivos generados por Shiny ===
+www/
+www/*
+/shinyapps/
+/shiny/
+
+# === Archivos de sesión y logs ===
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+/session_info.txt
+
+# === Entornos virtuales (por si usas Python u otros) ===
+venv/
+env/
+__pycache__/
+
+# === Archivos específicos del sistema ===
+.DS_Store?
+ehthumbs.db
+Thumbs.db

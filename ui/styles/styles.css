@@ -1,0 +1,275 @@
+/* ui/styles/styles.css */
+
+/* Restablecer márgenes y rellenos */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  font-size: 16px;
+  background-color: #F5F5F5;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  height: 4em;
+  padding-left: 0.625em;
+  background-color: #026988;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+/* Estilos para el link dentro del titlePanel */
+.clickable-title {
+  cursor: pointer;
+  color: #F2F2F2;
+  text-decoration: none;
+  transition: opacity 0.3s ease;
+}
+
+.clickable-title:hover {
+  text-decoration: underline;
+  opacity: 0.8;
+}
+
+/* Establecer el color de fondo de las pestañas */
+.nav.nav-tabs {
+  background-color: #E2E2E2;
+  color: #FBFBFB;
+}
+
+/* Establecer el color de fondo de la pestaña activa */
+.nav.nav-tabs .active {
+  background-color: #F8F8F8;
+  border-color: #F8F8F8;
+  color: #004062;
+}
+
+.well {
+  background-color: #CACACA;
+}
+
+/* Estilo para las opciones deshabilitadas en el radioButton */
+.disabled-option + span {
+  opacity: .5;
+  pointer-events: none;
+}
+
+/* Estilos específicos para versiones desktop */
+.desktop-only {
+  display: block;
+}
+
+/* Estilos para el contenedor del gráfico */
+.plot-container {
+  width: 100% !important;
+  height: auto;
+  padding: 0.5em; /* Ajustar relleno alrededor del gráfico */
+}
+
+.shiny-plot-output {
+  width: 100% !important; /* Asegura que el gráfico ocupe todo el ancho disponible */
+  height: auto; /* Permite que la altura del gráfico se ajuste automáticamente */
+}
+
+/* Estilos para imágenes y gráficos */
+img, .shiny-plot-output {
+  max-width: 100%;
+  height: auto;
+  width: 100%;
+}
+
+.parent-container {
+  width: 100%;
+}
+
+.plot-container {
+  width: 100% !important;
+  height: auto;
+}
+
+.svg-container {
+  width: 100% !important;
+  height: auto;
+}
+
+.main-svg {
+  width: 100% !important;
+  height: 100%;
+}
+
+/* Estilos para tablas */
+.dataTables_wrapper {
+  font-size: 0.875em;
+}
+
+/* -------- SIDEBAR DERECHO -------- */
+
+/* Estilo general para el sidebar derecho */
+.sidebar-right {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 300px;
+  height: 100%;
+  background-color: #f8f9fa;
+  border-left: 1px solid #ccc;
+  padding: 20px;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  display: block; /* Visible por defecto */
+  transition: transform 0.3s ease; /* Animación suave para el movimiento */
+}
+
+/* Sidebar oculto */
+.sidebar-right.hidden {
+  transform: translateX(300px); /* Mueve el sidebar fuera de la vista */
+}
+
+/* Contenedor para los botones de toggle - ahora fuera del sidebar */
+.toggle-container {
+  position: fixed;
+  top: 5px; /* Posición vertical ajustada 20px desde arriba */
+  right: 300px; /* Alineado con el borde del sidebar */
+  z-index: 1001;
+  transition: right 0.3s ease; /* Animación suave para el movimiento */
+}
+
+/* Posición del toggle cuando el sidebar está oculto */
+.toggle-container.sidebar-hidden {
+  right: 0;
+}
+
+/* Botón para ocultar/mostrar el sidebar */
+.toggle-sidebar-btn {
+  background-color: #EE701D;
+  color: white;
+  border: none;
+  padding: 15px 10px; /* Invertido para hacer un rectángulo vertical */
+  cursor: pointer;
+  font-size: 16px;
+  width: 30px; /* Ancho reducido */
+  height: 60px; /* Alto aumentado */
+  text-align: center;
+  border-radius: 5px 0 0 5px; /* Redondea solo las esquinas izquierdas */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Efecto hover para el botón */
+.toggle-sidebar-btn:hover {
+  color: white;
+  background-color: #BF3601;
+}
+
+/****** Estilos para el panel de análisis en el sidebar derecho ******/
+.sidebar-right h3 {
+  text-align: center; 
+  font-size: 2rem; 
+  margin-bottom: 15px;
+}
+
+.sidebar-right h4 {
+  font-weight: bold;
+  font-size: 1.8rem;
+  margin-top: 15px;
+  margin-bottom: 8px;
+}
+
+.sidebar-right p {
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+}
+
+.year-highlight {
+  font-weight: bold;
+  color: #0056b3;
+}
+
+.alcance-analisis {
+  font-style: italic;
+  color: #555;
+  font-size: 1.5rem;
+}
+
+.cargo-subtitulo {
+  text-align: center;
+  font-size: 0.8rem;
+  margin-top: -5px;
+  margin-bottom: 15px;
+  color: #4A4A4A;
+  font-weight: normal;
+}
+
+/* Alerta para cuando no hay datos disponibles */
+.sidebar-alert {
+  color: #721c24;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+/* Sección dentro del sidebar */
+.sidebar-section {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+/* Último elemento sin borde inferior */
+.sidebar-section:last-child {
+  border-bottom: none;
+}
+
+/* Estilo general para el sidebar derecho */
+.sidebar-right {
+  position: fixed;
+  top: 4em; /* Ajustado para estar debajo del header que tiene height: 4em */
+  right: 0;
+  width: 300px;
+  height: calc(100vh - 4em); /* Altura calculada restando la altura del header */
+  background-color: #f8f9fa;
+  border-left: 1px solid #ccc;
+  padding: 20px;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  display: block; /* Visible por defecto */
+  transition: transform 0.3s ease; /* Animación suave para el movimiento */
+  overflow-y: auto; /* Añade scroll vertical cuando sea necesario */
+  overflow-x: hidden; /* Evita scroll horizontal */
+}
+
+/* Estilo para la barra de desplazamiento */
+.sidebar-right::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-right::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.sidebar-right::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.sidebar-right::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Sidebar oculto */
+.sidebar-right.hidden {
+  transform: translateX(300px); /* Mueve el sidebar fuera de la vista */
+}
