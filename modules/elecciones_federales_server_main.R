@@ -110,8 +110,6 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     updateSelectInput(session, "cargo", 
                       choices = choices,
                       selected = selected)
-    
-    # ⚠️ NO actualizar tipo_eleccion aquí → lo hace otro observer
   }, priority = 1)
   
   # Manejar casos especiales de elecciones y tipos de elección
@@ -251,10 +249,6 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     
     # Filtrar columnas que existan en datos
     selected_columns <- c(columnas_fijas, columnas_partidos, columnas_adicionales)
-    columnas_no_encontradas <- selected_columns[!selected_columns %in% colnames(datos)]
-    if (length(columnas_no_encontradas) > 0) {
-      message("Columnas no encontradas en datos: ", paste(columnas_no_encontradas, collapse = ", "))
-    }
     selected_columns <- selected_columns[selected_columns %in% colnames(datos)]
     
     if (length(selected_columns) == 0) {
@@ -272,60 +266,65 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
       }
     })
     
-    # Verificar longitud de nombres_columnas
+    # Verificar longitud
     if (length(nombres_columnas) != length(selected_columns)) {
-      message("Error: Longitud de nombres_columnas (", length(nombres_columnas), 
-              ") no coincide con selected_columns (", length(selected_columns), ")")
+      message("Error: Longitud de nombres_columnas no coincide")
     }
     
     # Depuración
-    message("Columnas disponibles en datos: ", paste(colnames(datos), collapse = ", "))
     message("Columnas seleccionadas: ", paste(selected_columns, collapse = ", "))
     message("Nombres de columnas aplicados: ", paste(nombres_columnas, collapse = ", "))
-    message("Filas en datos_tabla para DataTable: ", nrow(datos))
     
-    # Renombrar columnas en el data.frame
+    # Renombrar columnas
     datos_tabla <- datos[, selected_columns, drop = FALSE]
     colnames(datos_tabla) <- nombres_columnas
     
-    # Formatear columnas numéricas y de porcentaje
-    indices_numericos <- which(selected_columns %in% c(columnas_partidos, "total_votos", "vot_nul", "no_reg")) - 1
-    indices_porcentaje <- which(selected_columns == "part_ciud") - 1
+    # --- 🔧 CORRECCIÓN: Formatear "Participación" como texto con % ---
+    if ("Participación" %in% colnames(datos_tabla)) {
+      datos_tabla[["Participación"]] <- sprintf("%.2f%%", datos_tabla[["Participación"]])
+    }
+    
+    # --- 🔧 CORRECCIÓN: Solo aplicar comas a columnas numéricas de votos ---
+    # Columnas que deben tener formato de miles
+    columnas_con_comas <- c(
+      "PAN", "PRI", "PRD", "PVEM", "PT", "MC", "MORENA", "NVALZ", "ASDC", "APM", 
+      "CAND_IND1", "CAND_IND2", "PH", "ES", "FXM", "RSP",
+      "Total de Votos", "Votos Nulos", "No Registrados"
+    )
+    
+    # Índices 0-based para DataTable
+    indices_con_comas <- which(colnames(datos_tabla) %in% columnas_con_comas) - 1
+    indices_con_comas <- indices_con_comas[!is.na(indices_con_comas) & indices_con_comas >= 0]
+    
+    # Aplicar formato solo si hay columnas que lo requieran
+    column_defs <- if (length(indices_con_comas) > 0) list(
+      list(
+        targets = indices_con_comas,
+        render = JS(
+          "function(data, type, row) {",
+          "  return type === 'display' && data != null ?",
+          "    data.toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') : data;",
+          "}"
+        )
+      )
+    ) else NULL
     
     dt <- datatable(
       datos_tabla, 
       caption = htmltools::tags$caption(
         style = "caption-side: bottom; text-align: left; font-size: 10px; color: #666666; font-family: Arial, sans-serif;",
-        "Fuente: INE. Sistema de Consulta de la Estadística de las Elecciones. https://siceen21.ine.mx/home  "
+        "Fuente: INE. Sistema de Consulta de la Estadística de las Elecciones. https://siceen21.ine.mx/home    "
       ),
       options = list(
         pageLength = 10,
         lengthMenu = list(c(10, 25, 50, 100, -1), c("10", "25", "50", "100", "Todos")),
-        dom = 'lfrtip',  # Eliminado 'B' para remover botones
-        columnDefs = list(
-          list(
-            targets = indices_numericos,
-            render = JS(
-              "function(data, type, row) {",
-              "  return type === 'display' && data != null ?",
-              "    data.toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') : data;",
-              "}"
-            )
-          ),
-          list(
-            targets = indices_porcentaje,
-            render = JS(
-              "function(data, type, row) {",
-              "  return type === 'display' && data != null ? data + '%' : data;",
-              "}"
-            )
-          )
-        )
+        dom = 'lfrtip',
+        columnDefs = column_defs
       ),
       escape = FALSE
     )
     
-    message("DataTable renderizado con pie de página y menú de entries")
+    message("DataTable renderizado correctamente")
     dt
   })
   

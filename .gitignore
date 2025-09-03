@@ -7,6 +7,8 @@ results/
 *.rds
 *.db
 *.sqlite
+modules/viz_geografica_ui.R
+modules/viz_geografica_server.R
 
 # === Archivos temporales del sistema (macOS) ===
 .DS_Store
