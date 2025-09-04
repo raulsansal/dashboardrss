@@ -132,30 +132,45 @@ elecciones_federales_server_text_analysis <- function(input, output, session, da
   output$`text_analysis-texto_resultados_partido_fed` <- renderUI({
     req(input$year, input$cargo)
     datos <- datos_columnas()$datos
-    
     if (nrow(datos) == 0) {
       return(NULL)
     }
     
+    # Obtener TODOS los partidos que compitieron en esta elección (año + cargo)
     key <- paste(input$year, input$cargo, sep = "_")
-    columnas_partidos <- partidos_mapping[[key]]
+    columnas_partidos_todos <- partidos_mapping[[key]]
+    if (is.null(columnas_partidos_todos) || length(columnas_partidos_todos) == 0) {
+      return(NULL)
+    }
     
+    # Calcular el total de votos de todos los partidos (denominador correcto)
+    total_votos_todos <- sum(datos[, intersect(columnas_partidos_todos, colnames(datos))], na.rm = TRUE)
+    if (total_votos_todos == 0) {
+      return(NULL)
+    }
+    
+    # Calcular votos y porcentajes para todos los partidos
     datos_totales <- datos %>%
-      select(all_of(columnas_partidos)) %>%
+      select(all_of(intersect(columnas_partidos_todos, colnames(datos)))) %>%
       summarize_all(sum, na.rm = TRUE) %>%
       pivot_longer(cols = everything(), names_to = "partido", values_to = "votos") %>%
-      mutate(porcentaje = (votos / sum(votos)) * 100) %>%
+      mutate(porcentaje = (votos / total_votos_todos) * 100) %>%
       arrange(desc(votos))
     
+    # Tomar los 3 primeros
     principales <- datos_totales %>% 
       slice_head(n = 3) %>%
       mutate(porcentaje_texto = sprintf("%.2f%%", porcentaje))
     
+    # Calcular diferencias
     diferencia_1_2 <- principales$porcentaje[1] - principales$porcentaje[2]
     diferencia_2_3 <- principales$porcentaje[2] - principales$porcentaje[3]
+    
+    # Formatear diferencias
     diferencia_1_2_texto <- sprintf("%.2f", diferencia_1_2)
     diferencia_2_3_texto <- sprintf("%.2f", diferencia_2_3)
     
+    # Generar texto final
     texto_principales <- paste0(
       "<h4>Fuerza partidista</h4>",
       "<p>La diferencia entre el primer lugar (", principales$partido[1], ": ", 

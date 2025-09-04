@@ -175,12 +175,10 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     req(is.list(datos))
     
     # Solo actualizar si el estado sigue siendo el mismo
-    # (evita actualizaciones fantasma tras cambios rápidos)
     if (input$estado != "Nacional") {
       choices <- c("Todos", sort(datos$todos_cabeceras))
       message("🔍 [ACTUALIZACIÓN CABECERA] Opciones disponibles: ", paste(choices, collapse = ", "))
       
-      # Guardar selección actual para no perderla si ya estaba elegido
       current <- input$cabecera
       
       updateSelectInput(session, "cabecera", 
@@ -313,7 +311,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
       datos_tabla, 
       caption = htmltools::tags$caption(
         style = "caption-side: bottom; text-align: left; font-size: 10px; color: #666666; font-family: Arial, sans-serif;",
-        "Fuente: INE. Sistema de Consulta de la Estadística de las Elecciones. https://siceen21.ine.mx/home    "
+        "Fuente: INE. Sistema de Consulta de la Estadística de las Elecciones. https://siceen21.ine.mx/home     "
       ),
       options = list(
         pageLength = 10,
@@ -363,7 +361,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
       
       # Usar write.csv con quote=TRUE para manejar cadenas con comas
       write.csv(datos_tabla, file, row.names = FALSE, fileEncoding = "UTF-8", quote = TRUE)
-      write("Fuente: INE. Sistema de Consulta de la Estadística de las Elecciones. https://siceen21.ine.mx/home  ", 
+      write("Fuente: INE. Sistema de Consulta de la Estadística de las Elecciones. https://siceen21.ine.mx/home     ", 
             file, append = TRUE)
     }
   )
@@ -442,20 +440,32 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     
     datos <- datos_columnas()$datos
     req(is.data.frame(datos))
-    
     key <- paste(input$year, input$cargo, sep = "_")
-    columnas_partidos <- if ("Todos" %in% input$partidos) {
-      partidos_mapping[[key]]
-    } else {
-      intersect(partidos_mapping[[key]], input$partidos)
+    
+    # Obtener TODOS los partidos que compitieron en esta elección
+    columnas_partidos_todos <- partidos_mapping[[key]]
+    if (is.null(columnas_partidos_todos) || length(columnas_partidos_todos) == 0) {
+      return(NULL)
     }
     
+    # Calcular el total de votos de todos los partidos (denominador correcto)
+    total_votos_todos <- sum(datos[, intersect(columnas_partidos_todos, colnames(datos))], na.rm = TRUE)
+    
+    # Partidos seleccionados por el usuario
+    columnas_partidos_seleccionados <- if ("Todos" %in% input$partidos) {
+      columnas_partidos_todos
+    } else {
+      intersect(columnas_partidos_todos, input$partidos)
+    }
+    
+    # Calcular votos para partidos seleccionados
     datos_grafico <- datos %>%
-      select(all_of(columnas_partidos)) %>%
+      select(all_of(intersect(columnas_partidos_seleccionados, colnames(datos)))) %>%
       pivot_longer(cols = everything(), names_to = "partido", values_to = "total_votos") %>%
       group_by(partido) %>%
       summarize(total_votos = sum(total_votos, na.rm = TRUE)) %>%
-      arrange(desc(total_votos))
+      arrange(desc(total_votos)) %>%
+      mutate(porcentaje = (total_votos / total_votos_todos) * 100)
     
     # Aplicar mapeo de etiquetas
     datos_grafico <- datos_grafico %>%
@@ -466,12 +476,6 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     # Depurar mapeo
     message("Mapeo de etiquetas aplicado: ", 
             paste(datos_grafico$partido, "→", datos_grafico$partido_etiqueta, collapse = ", "))
-    
-    # Calcular el total de votos y el porcentaje
-    total_votos_global <- sum(datos_grafico$total_votos, na.rm = TRUE)
-    message("Total votos global: ", total_votos_global)
-    datos_grafico <- datos_grafico %>%
-      mutate(porcentaje = (total_votos / total_votos_global) * 100)
     
     # Depurar porcentajes
     message("Datos gráfico con porcentajes: ", 
@@ -557,7 +561,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
             align = "center"
           ),
           list(
-            text = "Fuente: INE. Sistema de Consulta de la Estadística de las Elecciones. https://siceen21.ine.mx/home  ",
+            text = "Fuente: INE. Sistema de Consulta de la Estadística de las Elecciones. https://siceen21.ine.mx/home     ",
             x = 0.0,
             y = -0.15,
             xref = "paper",
@@ -571,11 +575,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
         ),
         autosize = TRUE,
         margin = list(t = 120, l = 20, r = 20, b = 80),
-        xaxis = list(
-          title = "",
-          showticklabels = FALSE,
-          showgrid = FALSE
-        ),
+        xaxis = list(title = "", showticklabels = FALSE, showgrid = FALSE),
         yaxis = list(title = "")
       )
     
