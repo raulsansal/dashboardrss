@@ -41,7 +41,6 @@ cache/
 /renv/settings.json
 
 # === Archivos generados por Shiny ===
-www/
 www/*
 /shinyapps/
 /shiny/
