@@ -33,10 +33,10 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
   observe({
     datos <- datos_columnas()
     if (is.list(datos)) {
-      message("datos_columnas en main: ", paste(names(datos), collapse = ", "))
-      message("todos_estados en datos_columnas: ", paste(datos$todos_estados, collapse = ", "))
+      message("🔍 datos_columnas en main: ", paste(names(datos), collapse = ", "))
+      message("🔍 todos_estados en datos_columnas: ", paste(datos$todos_estados, collapse = ", "))
     } else {
-      message("datos_columnas no es una lista válida: ", class(datos))
+      message("⚠️ datos_columnas no es una lista válida: ", class(datos))
     }
     if (!is.null(datos$todos_estados)) {
       todos_estados(datos$todos_estados)
@@ -57,10 +57,10 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     key <- paste(input$year, input$cargo, sep = "_")
     columnas_disponibles <- partidos_mapping[[key]]
     if (is.null(columnas_disponibles)) {
-      message("No hay columnas disponibles para ", key)
+      message("⚠️ No hay columnas disponibles para ", key)
       columnas_disponibles <- character(0)
     }
-    message("Actualizando partidos para ", key, ": ", paste(columnas_disponibles, collapse = ", "))
+    message("🔍 Actualizando partidos para ", key, ": ", paste(columnas_disponibles, collapse = ", "))
     updateSelectizeInput(session, "partidos", 
                          choices = c("Todos" = "Todos", columnas_disponibles), 
                          selected = "Todos",
@@ -87,7 +87,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     year_str <- as.character(input$year)
     choices <- valid_combinations[[year_str]]
     if (is.null(choices)) {
-      message("Año inválido en main: ", year_str)
+      message("⚠️ Año inválido en main: ", year_str)
       choices <- character(0)
     }
     
@@ -152,7 +152,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
       if (length(choices) > 1) choices <- c(choices, "AMBAS")
       
       if (length(choices) == 0) {
-        message("No hay tipos de elección disponibles para year=", input$year, ", cargo=", input$cargo)
+        message("⚠️ No hay tipos de elección disponibles para year=", input$year, ", cargo=", input$cargo)
         choices <- c("ORDINARIA")
       }
       
@@ -243,14 +243,14 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     # Añadir columnas adicionales si están en los datos
     columnas_adicionales <- c("total_votos", "part_ciud")
     columnas_adicionales <- columnas_adicionales[columnas_adicionales %in% colnames(datos)]
-    message("Columnas adicionales incluidas: ", paste(columnas_adicionales, collapse = ", "))
+    message("🔍 Columnas adicionales incluidas: ", paste(columnas_adicionales, collapse = ", "))
     
     # Filtrar columnas que existan en datos
     selected_columns <- c(columnas_fijas, columnas_partidos, columnas_adicionales)
     selected_columns <- selected_columns[selected_columns %in% colnames(datos)]
     
     if (length(selected_columns) == 0) {
-      message("No hay columnas válidas para mostrar en el DataTable")
+      message("⚠️ No hay columnas válidas para mostrar en el DataTable")
       return(datatable(data.frame(Mensaje = "No hay datos disponibles"), 
                        options = list(pageLength = 10)))
     }
@@ -266,23 +266,22 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     
     # Verificar longitud
     if (length(nombres_columnas) != length(selected_columns)) {
-      message("Error: Longitud de nombres_columnas no coincide")
+      message("⚠️ Error: Longitud de nombres_columnas no coincide")
     }
     
     # Depuración
-    message("Columnas seleccionadas: ", paste(selected_columns, collapse = ", "))
-    message("Nombres de columnas aplicados: ", paste(nombres_columnas, collapse = ", "))
+    message("🔍 Columnas seleccionadas: ", paste(selected_columns, collapse = ", "))
+    message("🔍 Nombres de columnas aplicados: ", paste(nombres_columnas, collapse = ", "))
     
     # Renombrar columnas
     datos_tabla <- datos[, selected_columns, drop = FALSE]
     colnames(datos_tabla) <- nombres_columnas
     
-    # --- 🔧 CORRECCIÓN: Formatear "Participación" como texto con % ---
+    # Formatear "Participación" como texto con %
     if ("Participación" %in% colnames(datos_tabla)) {
       datos_tabla[["Participación"]] <- sprintf("%.2f%%", datos_tabla[["Participación"]])
     }
     
-    # --- 🔧 CORRECCIÓN: Solo aplicar comas a columnas numéricas de votos ---
     # Columnas que deben tener formato de miles
     columnas_con_comas <- c(
       "PAN", "PRI", "PRD", "PVEM", "PT", "MC", "MORENA", "NVALZ", "ASDC", "APM", 
@@ -322,7 +321,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
       escape = FALSE
     )
     
-    message("DataTable renderizado correctamente")
+    message("✅ DataTable renderizado correctamente")
     dt
   })
   
@@ -357,7 +356,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
       colnames(datos_tabla) <- nombres_columnas
       
       # Depuración
-      message("Filas exportadas en downloadHandler: ", nrow(datos_tabla))
+      message("🔍 Filas exportadas en downloadHandler: ", nrow(datos_tabla))
       
       # Usar write.csv con quote=TRUE para manejar cadenas con comas
       write.csv(datos_tabla, file, row.names = FALSE, fileEncoding = "UTF-8", quote = TRUE)
@@ -392,7 +391,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     if (isTRUE(datos$tiene_representacion_proporcional)) choices <- c(choices, "REPRESENTACIÓN PROPORCIONAL")
     
     if (length(choices) == 0) {
-      message("No hay principios electorales disponibles para year=", input$year)
+      message("⚠️ No hay principios electorales disponibles para year=", input$year)
       choices <- c("MAYORÍA RELATIVA")
     }
     
@@ -445,6 +444,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     # Obtener TODOS los partidos que compitieron en esta elección
     columnas_partidos_todos <- partidos_mapping[[key]]
     if (is.null(columnas_partidos_todos) || length(columnas_partidos_todos) == 0) {
+      message("⚠️ No hay partidos disponibles para ", key)
       return(NULL)
     }
     
@@ -474,11 +474,11 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
       }))
     
     # Depurar mapeo
-    message("Mapeo de etiquetas aplicado: ", 
+    message("🔍 Mapeo de etiquetas aplicado: ", 
             paste(datos_grafico$partido, "→", datos_grafico$partido_etiqueta, collapse = ", "))
     
     # Depurar porcentajes
-    message("Datos gráfico con porcentajes: ", 
+    message("🔍 Datos gráfico con porcentajes: ", 
             paste(datos_grafico$partido_etiqueta, ":", 
                   round(datos_grafico$porcentaje, 2), "%", collapse = ", "))
     
@@ -588,13 +588,172 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
       }
     }
     
-    message("Gráfico de barras renderizado correctamente con fuente")
+    message("✅ Gráfico de barras renderizado correctamente con fuente")
     p_plotly
+  })
+  
+  # Generar gráfico de participación y abstención
+  output$`main-participacion_plot` <- renderPlotly({
+    message("🔍 [PARTICIPACION_PLOT] Iniciando renderizado para year=", input$year %||% "NULL", 
+            ", cargo=", input$cargo %||% "NULL", ", estado=", input$estado %||% "NULL", 
+            ", cabecera=", input$cabecera %||% "NULL", ", municipio=", input$municipio %||% "NULL", 
+            ", seccion=", paste(input$seccion %||% "NULL", collapse = ", "), 
+            ", tipo_eleccion=", input$tipo_eleccion %||% "NULL", " en ", Sys.time())
+    
+    # Validar entradas
+    req(input$year, input$cargo, input$estado, input$cabecera, input$municipio, input$seccion, input$tipo_eleccion)
+    
+    # Depurar combinacion_valida
+    message("🔍 [PARTICIPACION_PLOT] Evaluando combinacion_valida...")
+    combinacion <- tryCatch({
+      req(combinacion_valida())
+      combinacion_valida()
+    }, error = function(e) {
+      message("⚠️ [PARTICIPACION_PLOT] Error en combinacion_valida: ", e$message)
+      return(FALSE)
+    })
+    message("🔍 [PARTICIPACION_PLOT] combinacion_valida tipo: ", class(combinacion))
+    message("🔍 [PARTICIPACION_PLOT] combinacion_valida valor: ", combinacion)
+    
+    # Validar combinacion_valida sin usar validate
+    if (!is.logical(combinacion) || !combinacion) {
+      message("⚠️ [PARTICIPACION_PLOT] Combinación no válida o no es lógica")
+      return(NULL)
+    }
+    
+    # Validar datos_columnas
+    message("🔍 [PARTICIPACION_PLOT] Evaluando datos_columnas...")
+    datos_columnas_val <- tryCatch({
+      req(datos_columnas())
+      datos_columnas()
+    }, error = function(e) {
+      message("⚠️ [PARTICIPACION_PLOT] Error en datos_columnas: ", e$message)
+      return(NULL)
+    })
+    message("🔍 [PARTICIPACION_PLOT] datos_columnas tipo: ", class(datos_columnas_val))
+    message("🔍 [PARTICIPACION_PLOT] datos_columnas es NULL? ", is.null(datos_columnas_val))
+    message("🔍 [PARTICIPACION_PLOT] datos_columnas nombres: ", 
+            if (!is.null(datos_columnas_val) && is.list(datos_columnas_val)) paste(names(datos_columnas_val), collapse = ", ") else "No es lista o es NULL")
+    
+    # Validar que datos_columnas sea una lista válida con 'datos'
+    if (is.null(datos_columnas_val) || !is.list(datos_columnas_val) || !("datos" %in% names(datos_columnas_val))) {
+      message("⚠️ [PARTICIPACION_PLOT] datos_columnas es NULL, no es una lista válida o no contiene 'datos'")
+      return(NULL)
+    }
+    
+    # Obtener datos
+    datos <- datos_columnas_val$datos
+    message("🔍 [PARTICIPACION_PLOT] Tipo de datos: ", class(datos))
+    message("🔍 [PARTICIPACION_PLOT] Es data.frame? ", is.data.frame(datos))
+    message("🔍 [PARTICIPACION_PLOT] Filas en datos: ", if (is.data.frame(datos)) nrow(datos) else "No es data.frame")
+    message("🔍 [PARTICIPACION_PLOT] Columnas en datos: ", 
+            if (is.data.frame(datos)) paste(colnames(datos), collapse = ", ") else "No disponible")
+    
+    # Validar datos
+    if (!is.data.frame(datos) || nrow(datos) == 0) {
+      message("⚠️ [PARTICIPACION_PLOT] No hay datos disponibles o datos no es un data.frame")
+      return(NULL)
+    }
+    
+    # Validar columna part_ciud
+    if (!"part_ciud" %in% colnames(datos)) {
+      message("⚠️ [PARTICIPACION_PLOT] La columna part_ciud no está presente")
+      return(NULL)
+    }
+    
+    # Validar que part_ciud sea numérica
+    if (!is.numeric(datos$part_ciud)) {
+      message("⚠️ [PARTICIPACION_PLOT] La columna part_ciud no es numérica")
+      return(NULL)
+    }
+    
+    # Calcular promedio de participación
+    porc_participacion <- round(mean(datos$part_ciud, na.rm = TRUE), 2)
+    porc_abstencion <- round(100 - porc_participacion, 2)
+    message("🔍 [PARTICIPACION_PLOT] Porcentaje participación: ", porc_participacion, 
+            ", Porcentaje abstención: ", porc_abstencion)
+    
+    # Calcular lne_total para el título
+    lne_total <- sum(datos$lne, na.rm = TRUE)
+    message("🔍 [PARTICIPACION_PLOT] lne_total: ", lne_total)
+    if (!is.numeric(lne_total) || lne_total <= 0) {
+      message("⚠️ [PARTICIPACION_PLOT] lne_total es inválido o menor/igual a 0")
+      return(NULL)
+    }
+    
+    # Datos para el gráfico de anillo
+    df_externo <- data.frame(
+      grupo = c(
+        paste0("Participación electoral:<br>", sprintf("%.2f%%", porc_participacion)),
+        sprintf("Abstencionismo: %.2f%%", porc_abstencion)
+      ),
+      valor = c(porc_participacion, porc_abstencion),
+      tipo = "Externo"
+    )
+    
+    message("🔍 [PARTICIPACION_PLOT] df_externo: ", paste(capture.output(str(df_externo)), collapse = "\n"))
+    
+    # Colores
+    color_participacion <- "#D3088D"  # Forzar color explícitamente
+    color_abstencion <- default_color %||% "#B0BEC5"
+    message("🔍 [PARTICIPACION_PLOT] color_participacion: ", color_participacion, 
+            ", color_abstencion: ", color_abstencion)
+    
+    # Crear gráfico
+    p <- plot_ly(width = "100%", height = 432)
+    
+    # Anillo exterior
+    p <- add_pie(p, 
+                 data = df_externo, 
+                 values = ~valor, 
+                 labels = ~grupo,
+                 domain = list(x = c(0.1, 0.9), y = c(0.25, 0.75)),
+                 hole = 0.6,
+                 type = "pie",
+                 textinfo = "label",
+                 textposition = "outside",
+                 textfont = list(
+                   color = c(color_participacion, color_abstencion),
+                   size = 14
+                 ),
+                 showlegend = FALSE,
+                 marker = list(colors = c(color_participacion, color_abstencion)),
+                 hovertemplate = paste(
+                   "<b>%{label}</b><br>",
+                   "Porcentaje: %{percent:.1%}<extra></extra>"
+                 ))
+    
+    # Configurar diseño
+    p <- layout(p,
+                title = list(
+                  text = paste0("Lista Nominal Total: ", format(lne_total, big.mark = ",")),
+                  x = 0.5,
+                  xanchor = "center",
+                  y = 0.95,
+                  yanchor = "top",
+                  font = list(size = 18, color = "black", family = "Arial, sans-serif")
+                ),
+                annotations = list(
+                  list(
+                    text = "Fuente: INE. Sistema de Consulta de la Estadística de las Elecciones. https://siceen21.ine.mx/home",
+                    xref = "paper", yref = "paper",
+                    x = 0.0, y = -0.2,
+                    font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
+                    showarrow = FALSE,
+                    align = "left"
+                  )
+                ),
+                margin = list(t = 100, b = 120, l = 100, r = 100),
+                showlegend = FALSE
+    )
+    
+    message("✅ [PARTICIPACION_PLOT] Gráfico de participación renderizado correctamente")
+    p
   })
   
   # Restablecer configuración al presionar el botón
   observeEvent(input$reset_config, {
-    message("Restableciendo configuración de consulta")
+    message("🔍 Restableciendo configuración de consulta")
     
     # Restablecer año
     updateSelectInput(session, "year", 
@@ -650,6 +809,6 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
                        choices = c("MAYORÍA RELATIVA", "REPRESENTACIÓN PROPORCIONAL"), 
                        selected = "MAYORÍA RELATIVA")
     
-    message("Configuración restablecida correctamente")
+    message("✅ Configuración restablecida correctamente")
   })
 }

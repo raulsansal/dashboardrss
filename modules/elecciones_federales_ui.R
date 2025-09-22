@@ -1,3 +1,5 @@
+# modules/elecciones_federales_ui
+
 elecciones_federales_ui <- function(id) {
   ns <- NS(id)
   
@@ -39,26 +41,46 @@ elecciones_federales_ui <- function(id) {
         actionButton(inputId = ns("reset_config"), 
                      label = "Restablecer consulta", 
                      class = "btn-primary"),
-        downloadButton(ns("download_csv"), "Descargar CSV", class = "btn-primary")  # Añadido class
+        downloadButton(ns("download_csv"), "Descargar CSV", class = "btn-primary")
       ),
       mainPanel(
+        # Gráfico de barras
         fluidRow(
           column(12, uiOutput(ns("main-plot_container")))
         ),
+        
+        # Título del nuevo gráfico
         fluidRow(
-          column(12, h3(" ", align = "center"))
+          column(12, h3("Participación y Abstención Electoral", align = "center"))
         ),
+        
+        # Gráfico de participación y abstención
         fluidRow(
-          column(12, h3("Data Table", align = "center"), DTOutput(ns("main-table_data")))
+          column(12, 
+                 div(style = "text-align: center; display: flex; justify-content: center;",
+                     plotlyOutput(ns("main-participacion_plot"), width = "100%", height = "432px"))
+          )
+        ),
+        
+        # DataTable
+        fluidRow(
+          column(12, 
+                 h3("Data Table", align = "center", style = "margin-top: 40px;"),
+                 DTOutput(ns("main-table_data"))
+          )
         )
       )
     ),
+    
+    # Botón para alternar sidebar derecho
     div(class = "toggle-container",
         actionButton(inputId = ns("toggle-sidebar-federales"), 
                      label = ">>", 
                      class = "toggle-sidebar-btn", 
                      `data-sidebar-id` = ns("sidebar-right-federales"))
     ),
+    
+    # Sidebar derecho: análisis textual
     div(id = ns("sidebar-right-federales"), class = "sidebar-right",
         uiOutput(ns("text_analysis-titulo_analisis_fed")),
         uiOutput(ns("text_analysis-alcance_analisis_fed")),

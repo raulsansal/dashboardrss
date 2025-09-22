@@ -412,9 +412,9 @@ elecciones_federales_server_text_analysis <- function(input, output, session, da
         }
       }
     }
-  
-  HTML(texto_participacion)
-})
+    
+    HTML(texto_participacion)
+  })
   
   output$`text_analysis-texto_comparacion_historica_fed` <- renderUI({
     req(input$year, input$cargo, input$tipo_eleccion)
@@ -551,5 +551,4 @@ elecciones_federales_server_text_analysis <- function(input, output, session, da
     HTML(texto_comparacion)
   })
   
-  }
-  
+}

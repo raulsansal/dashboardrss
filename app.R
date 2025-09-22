@@ -46,7 +46,7 @@ ui <- fluidPage(
       
       div(class = "header",
           titlePanel(
-            a(href = ".", "Dashboard Electoral | Raúl Sánchez Salgado", id = "title-link", class = "clickable-title")
+            a(href = ".", "Sefix", id = "title-link", class = "clickable-title")
           )
       ),
       

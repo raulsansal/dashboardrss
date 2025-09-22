@@ -70,28 +70,35 @@ body {
 .plot-container {
   width: 100% !important;
   height: auto;
-  padding: 0.5em; /* Ajustar relleno alrededor del gráfico */
+  padding: 0; /* Eliminar padding para evitar desplazamiento */
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .shiny-plot-output {
-  width: 100% !important; /* Asegura que el gráfico ocupe todo el ancho disponible */
-  height: auto; /* Permite que la altura del gráfico se ajuste automáticamente */
+  width: 100% !important;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Estilo específico para el gráfico de participación */
+#federales-main-participacion_plot {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100% !important;
+  height: 432px !important; /* Forzar altura */
 }
 
 /* Estilos para imágenes y gráficos */
 img, .shiny-plot-output {
   max-width: 100%;
   height: auto;
-  width: 100%;
 }
 
 .parent-container {
   width: 100%;
-}
-
-.plot-container {
-  width: 100% !important;
-  height: auto;
 }
 
 .svg-container {
@@ -109,36 +116,47 @@ img, .shiny-plot-output {
   font-size: 0.875em;
 }
 
+/* Títulos de gráficos */
+.main-panel h3 {
+  font-size: 1.5em;
+  color: #333;
+  margin-top: 20px;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
 /* -------- SIDEBAR DERECHO -------- */
 
 /* Estilo general para el sidebar derecho */
 .sidebar-right {
   position: fixed;
-  top: 0;
+  top: 4em;
   right: 0;
   width: 300px;
-  height: 100%;
+  height: calc(100vh - 4em);
   background-color: #f8f9fa;
   border-left: 1px solid #ccc;
   padding: 20px;
   box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
   z-index: 1000;
-  display: block; /* Visible por defecto */
-  transition: transform 0.3s ease; /* Animación suave para el movimiento */
+  display: block;
+  transition: transform 0.3s ease;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Sidebar oculto */
 .sidebar-right.hidden {
-  transform: translateX(300px); /* Mueve el sidebar fuera de la vista */
+  transform: translateX(300px);
 }
 
-/* Contenedor para los botones de toggle - ahora fuera del sidebar */
+/* Contenedor para los botones de toggle */
 .toggle-container {
   position: fixed;
-  top: 5px; /* Posición vertical ajustada 20px desde arriba */
-  right: 300px; /* Alineado con el borde del sidebar */
+  top: 5px;
+  right: 300px;
   z-index: 1001;
-  transition: right 0.3s ease; /* Animación suave para el movimiento */
+  transition: right 0.3s ease;
 }
 
 /* Posición del toggle cuando el sidebar está oculto */
@@ -151,13 +169,13 @@ img, .shiny-plot-output {
   background-color: #EE701D;
   color: white;
   border: none;
-  padding: 15px 10px; /* Invertido para hacer un rectángulo vertical */
+  padding: 15px 10px;
   cursor: pointer;
   font-size: 16px;
-  width: 30px; /* Ancho reducido */
-  height: 60px; /* Alto aumentado */
+  width: 30px;
+  height: 60px;
   text-align: center;
-  border-radius: 5px 0 0 5px; /* Redondea solo las esquinas izquierdas */
+  border-radius: 5px 0 0 5px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
   transition: all 0.3s ease;
   display: flex;
@@ -171,7 +189,7 @@ img, .shiny-plot-output {
   background-color: #BF3601;
 }
 
-/****** Estilos para el panel de análisis en el sidebar derecho ******/
+/* Estilos para el panel de análisis en el sidebar derecho */
 .sidebar-right h3 {
   text-align: center; 
   font-size: 2rem; 
@@ -232,24 +250,6 @@ img, .shiny-plot-output {
   border-bottom: none;
 }
 
-/* Estilo general para el sidebar derecho */
-.sidebar-right {
-  position: fixed;
-  top: 4em; /* Ajustado para estar debajo del header que tiene height: 4em */
-  right: 0;
-  width: 300px;
-  height: calc(100vh - 4em); /* Altura calculada restando la altura del header */
-  background-color: #f8f9fa;
-  border-left: 1px solid #ccc;
-  padding: 20px;
-  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
-  display: block; /* Visible por defecto */
-  transition: transform 0.3s ease; /* Animación suave para el movimiento */
-  overflow-y: auto; /* Añade scroll vertical cuando sea necesario */
-  overflow-x: hidden; /* Evita scroll horizontal */
-}
-
 /* Estilo para la barra de desplazamiento */
 .sidebar-right::-webkit-scrollbar {
   width: 8px;
@@ -267,9 +267,4 @@ img, .shiny-plot-output {
 
 .sidebar-right::-webkit-scrollbar-thumb:hover {
   background: #555;
-}
-
-/* Sidebar oculto */
-.sidebar-right.hidden {
-  transform: translateX(300px); /* Mueve el sidebar fuera de la vista */
 }
