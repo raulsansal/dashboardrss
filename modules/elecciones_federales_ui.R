@@ -1,4 +1,4 @@
-# modules/elecciones_federales_ui
+# modules/elecciones_federales_ui.R
 
 elecciones_federales_ui <- function(id) {
   ns <- NS(id)
@@ -46,19 +46,21 @@ elecciones_federales_ui <- function(id) {
       mainPanel(
         # Gráfico de barras
         fluidRow(
-          column(12, uiOutput(ns("main-plot_container")))
-        ),
-        
-        # Título del nuevo gráfico
-        fluidRow(
-          column(12, h3("Participación y Abstención Electoral", align = "center"))
-        ),
-        
-        # Gráfico de participación y abstención
-        fluidRow(
           column(12, 
-                 div(style = "text-align: center; display: flex; justify-content: center;",
-                     plotlyOutput(ns("main-participacion_plot"), width = "100%", height = "432px"))
+                 div(class = "plot-container",
+                     style = "height: 450px;",
+                     uiOutput(ns("main-plot_container"))
+                 )
+          )
+        ),
+        
+        # Contenedor para gráfico de participación
+        fluidRow(
+          column(12,
+                 div(class = "participacion-container",
+                     style = "height: 500px; display: flex; flex-direction: column; align-items: center; justify-content: center;",
+                     plotlyOutput(ns("main-participacion_plot"), width = "100%", height = "432px")
+                 )
           )
         ),
         

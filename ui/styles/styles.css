@@ -66,35 +66,47 @@ body {
   display: block;
 }
 
-/* Estilos para el contenedor del gráfico */
+/* Estilos para el contenedor del gráfico de barras */
 .plot-container {
   width: 100% !important;
-  height: auto;
-  padding: 0; /* Eliminar padding para evitar desplazamiento */
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  height: 450px;
+  padding: 0;
 }
 
-.shiny-plot-output {
+/* Estilo para el contenedor de título y gráfico de participación */
+.participacion-container {
   width: 100% !important;
-  max-width: 100%;
-  height: auto;
+  height: 500px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Estilo específico para el gráfico de participación */
 #federales-main-participacion_plot {
   display: block;
-  margin-left: auto;
+  margin-left: 160px;
   margin-right: auto;
   width: 100% !important;
-  height: 432px !important; /* Forzar altura */
+  height: 432px !important;
+}
+
+/* Forzar altura del gráfico de barras */
+.shiny-plot-output#federales-main-grafico_barras {
+  width: 100% !important;
+  height: 450px !important;
 }
 
 /* Estilos para imágenes y gráficos */
 img, .shiny-plot-output {
   max-width: 100%;
   height: auto;
+}
+
+/* Forzar altura del gráfico de participación */
+.shiny-plot-output#federales-main-participacion_plot {
+  height: 432px !important;
 }
 
 .parent-container {
@@ -120,8 +132,7 @@ img, .shiny-plot-output {
 .main-panel h3 {
   font-size: 1.5em;
   color: #333;
-  margin-top: 20px;
-  margin-bottom: 10px;
+  margin: 0 0 10px 0;
   text-align: center;
 }
 

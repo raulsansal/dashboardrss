@@ -1,4 +1,4 @@
-# modules/elecciones_federales_server_main
+# elecciones_federales_server_main.R
 
 elecciones_federales_server_main <- function(input, output, session, datos_columnas, combinacion_valida) {
   ns <- session$ns
@@ -707,7 +707,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
                  data = df_externo, 
                  values = ~valor, 
                  labels = ~grupo,
-                 domain = list(x = c(0.1, 0.9), y = c(0.25, 0.75)),
+                 domain = list(x = c(0.1, 0.9), y = c(0.15, 0.85)),
                  hole = 0.6,
                  type = "pie",
                  textinfo = "label",
@@ -718,22 +718,30 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
                  ),
                  showlegend = FALSE,
                  marker = list(colors = c(color_participacion, color_abstencion)),
-                 hovertemplate = paste(
-                   "<b>%{label}</b><br>",
-                   "Porcentaje: %{percent:.1%}<extra></extra>"
-                 ))
+                 hoverinfo = "none")
     
     # Configurar diseño
     p <- layout(p,
                 title = list(
-                  text = paste0("Lista Nominal Total: ", format(lne_total, big.mark = ",")),
+                  text = "Participación y Abstención Electoral",
                   x = 0.5,
                   xanchor = "center",
                   y = 0.95,
                   yanchor = "top",
-                  font = list(size = 18, color = "black", family = "Arial, sans-serif")
+                  font = list(size = 24, color = "black", family = "Arial, sans-serif")
                 ),
                 annotations = list(
+                  list(
+                    text = paste0("Lista Nominal Total: ", format(lne_total, big.mark = ",")),
+                    x = 0.5,
+                    xref = "paper",
+                    y = 1.25,
+                    yref = "paper",
+                    xanchor = "center",
+                    yanchor = "top",
+                    showarrow = FALSE,
+                    font = list(size = 18, color = "black", family = "Arial, sans-serif")
+                  ),
                   list(
                     text = "Fuente: INE. Sistema de Consulta de la Estadística de las Elecciones. https://siceen21.ine.mx/home",
                     xref = "paper", yref = "paper",
@@ -743,7 +751,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
                     align = "left"
                   )
                 ),
-                margin = list(t = 100, b = 120, l = 100, r = 100),
+                margin = list(t = 100, b = 100, l = 50, r = 50),
                 showlegend = FALSE
     )
     
