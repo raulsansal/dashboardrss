@@ -136,6 +136,31 @@ img, .shiny-plot-output {
   text-align: center;
 }
 
+/* -------- ESPACIADO PARA DATATABLES -------- */
+
+/* Agregar espacio inferior al contenedor completo del DataTable */
+.dataTables_wrapper {
+  margin-bottom: 50px !important;
+  padding-bottom: 20px !important;
+}
+
+/* Espaciado adicional para los controles inferiores */
+.dataTables_info, 
+.dataTables_paginate {
+  margin-bottom: 25px !important;
+}
+
+/* Espaciado para el caption (fuente) */
+.dataTables_wrapper caption {
+  margin-bottom: 20px !important;
+  padding-bottom: 15px !important;
+}
+
+/* Espaciado general para todos los elementos de paginación */
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  margin-bottom: 10px !important;
+}
+
 /* -------- SIDEBAR DERECHO -------- */
 
 /* Estilo general para el sidebar derecho */

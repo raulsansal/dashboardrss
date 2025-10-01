@@ -52,11 +52,71 @@ ui <- fluidPage(
       
       tabsetPanel(
         id = "main_tabs",
+        selected = "lista",  # Establecer "Lista Nominal Electoral" como pestaña inicial
+        
+        tabPanel("Lista Nominal Electoral", value = "lista",
+                 h2("Proyección de Lista Nominal Electoral"),
+                 div(class = "toggle-container",
+                     actionButton(inputId = "toggle-sidebar-lista", 
+                                  label = ">>", 
+                                  class = "toggle-sidebar-btn", 
+                                  `data-sidebar-id` = "sidebar-right-lista")
+                 ),
+                 div(id = "sidebar-right-lista", class = "sidebar-right",
+                     h3("Análisis de Texto Dinámico"),
+                     p("Aquí va el análisis dinámico para la Lista Nominal Electoral.")
+                 )
+        ),
         
         tabPanel("Elecciones Federales", value = "federales",
                  elecciones_federales_ui("federales")
         ),
         
+        tabPanel("Elecciones Locales", value = "locales",
+                 h2("Resultados de Elecciones Locales"),
+                 div(class = "toggle-container",
+                     actionButton(inputId = "toggle-sidebar-locales", 
+                                  label = ">>", 
+                                  class = "toggle-sidebar-btn", 
+                                  `data-sidebar-id` = "sidebar-right-locales")
+                 ),
+                 div(id = "sidebar-right-locales", class = "sidebar-right",
+                     h3("Análisis de Texto Dinámico"),
+                     p("Aquí va el análisis dinámico para Elecciones Locales.")
+                 )
+        ),
+        
+        tabPanel("Visualización Geográfica", value = "geografica",
+                 viz_geografica_ui("geografica")
+        ),
+        
+        tabPanel("Estadísticos Geoelectorales", value = "geo",
+                 h2("Estadísticos Geoelectorales"),
+                 div(class = "toggle-container",
+                     actionButton(inputId = "toggle-sidebar-geo", 
+                                  label = ">>", 
+                                  class = "toggle-sidebar-btn", 
+                                  `data-sidebar-id` = "sidebar-right-geo")
+                 ),
+                 div(id = "sidebar-right-geo", class = "sidebar-right",
+                     h3("Análisis de Texto Dinámico"),
+                     p("Aquí va el análisis dinámico para Estadísticos Geoelectorales.")
+                 )
+        ),
+        
+        tabPanel("Otros Estadísticos", value = "otros",
+                 h2("Otros Estadísticos"),
+                 div(class = "toggle-container",
+                     actionButton(inputId = "toggle-sidebar-otros", 
+                                  label = ">>", 
+                                  class = "toggle-sidebar-btn", 
+                                  `data-sidebar-id` = "sidebar-right-otros")
+                 ),
+                 div(id = "sidebar-right-otros", class = "sidebar-right",
+                     h3("Análisis de Texto Dinámico"),
+                     p("Aquí va el análisis dinámico para Otros Estadísticos.")
+                 )
+        )
       )
   )
 )
@@ -84,6 +144,7 @@ server <- function(input, output, session) {
     }
     
     valid_combinations <- list(
+      "2024" = c("DIPUTACION FEDERAL", "SENADURIA", "PRESIDENCIA"),
       "2023" = c("SENADURIA"),
       "2021" = c("DIPUTACION FEDERAL", "SENADURIA"),
       "2018" = c("DIPUTACION FEDERAL", "SENADURIA", "PRESIDENCIA"),

@@ -75,6 +75,7 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
   observeEvent(input$year, {
     req(input$year)
     valid_combinations <- list(
+      "2024" = c("DIPUTACION FEDERAL", "SENADURIA", "PRESIDENCIA"),
       "2023" = c("SENADURIA"),
       "2021" = c("DIPUTACION FEDERAL", "SENADURIA"),
       "2018" = c("DIPUTACION FEDERAL", "SENADURIA", "PRESIDENCIA"),
@@ -279,7 +280,12 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     
     # Formatear "Participación" como texto con %
     if ("Participación" %in% colnames(datos_tabla)) {
-      datos_tabla[["Participación"]] <- sprintf("%.2f%%", datos_tabla[["Participación"]])
+      participacion_numeric <- suppressWarnings(as.numeric(datos_tabla[["Participación"]]))
+      if (!all(is.na(participacion_numeric))) {
+        datos_tabla[["Participación"]] <- sprintf("%.2f%%", participacion_numeric)
+      } else {
+        datos_tabla[["Participación"]] <- "NA%"
+      }
     }
     
     # Columnas que deben tener formato de miles
@@ -765,8 +771,8 @@ elecciones_federales_server_main <- function(input, output, session, datos_colum
     
     # Restablecer año
     updateSelectInput(session, "year", 
-                      choices = c(2006, 2009, 2012, 2015, 2018, 2021, 2023), 
-                      selected = 2021)
+                      choices = c(2006, 2009, 2012, 2015, 2018, 2021, 2023, 2024), 
+                      selected = 2024)
     
     # Restablecer cargo
     updateSelectInput(session, "cargo", 

@@ -27,6 +27,7 @@ elecciones_federales_server <- function(id) {
               ", cargo=", input$cargo %||% "NULL")
       req(input$year, input$cargo)
       valid_combinations <- list(
+        "2024" = c("DIPUTACION FEDERAL", "SENADURIA", "PRESIDENCIA"),
         "2023" = c("SENADURIA"),
         "2021" = c("DIPUTACION FEDERAL", "SENADURIA"),
         "2018" = c("DIPUTACION FEDERAL", "SENADURIA", "PRESIDENCIA"),
@@ -55,7 +56,7 @@ elecciones_federales_server <- function(id) {
               " en ", Sys.time())
       
       # Usar isolate para evitar reevaluaciones innecesarias
-      year <- isolate(input$year %||% "2021")
+      year <- isolate(input$year %||% "2024")
       cargo <- isolate(input$cargo %||% "DIPUTACION FEDERAL")
       tipo_eleccion <- isolate(input$tipo_eleccion %||% "AMBAS")
       estado <- isolate(input$estado %||% "Nacional")

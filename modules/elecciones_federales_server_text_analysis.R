@@ -276,7 +276,8 @@ elecciones_federales_server_text_analysis <- function(input, output, session, da
     }
     
     calcular_promedio_participacion <- function(df) {
-      mean(df$part_ciud, na.rm = TRUE)
+      part_numeric <- suppressWarnings(as.numeric(df$part_ciud))
+      mean(part_numeric, na.rm = TRUE)
     }
     
     datos_nacional <- datos_orig %>% 

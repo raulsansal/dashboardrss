@@ -21,6 +21,7 @@ cargar_datos <- function(anio, cargo, tipo_eleccion, estado, cabecera, municipio
   
   # Validar combinación año-cargo
   valid_combinations <- list(
+    "2024" = c("DIPUTACION FEDERAL", "SENADURIA", "PRESIDENCIA"),
     "2023" = c("SENADURIA"),
     "2021" = c("DIPUTACION FEDERAL", "SENADURIA"),
     "2018" = c("DIPUTACION FEDERAL", "SENADURIA", "PRESIDENCIA"),
@@ -68,7 +69,7 @@ cargar_datos <- function(anio, cargo, tipo_eleccion, estado, cabecera, municipio
   
   # Construir nombre del archivo
   archivo <- paste0("pef_", cargo_name, "_", anio, ".csv")
-  ruta_archivo <- here::here("data/results", archivo)
+  ruta_archivo <- here::here("data/results/federals", archivo)
   
   message("📁 Ruta del archivo: ", ruta_archivo)
   
@@ -93,6 +94,20 @@ cargar_datos <- function(anio, cargo, tipo_eleccion, estado, cabecera, municipio
   datos <- tryCatch({
     dt <- fread(ruta_archivo, showProgress = FALSE)
     message("📊 Filas totales en CSV antes de filtrar: ", nrow(dt))
+    
+    # # Convertir columnas clave a numéricas, incluso si vienen como texto
+    if ("part_ciud" %in% colnames(dt)) {
+      dt[, part_ciud := as.numeric(as.character(part_ciud))]
+    }
+    if ("lne" %in% colnames(dt)) {
+      dt[, lne := as.numeric(as.character(lne))]
+    }
+    if ("total_votos" %in% colnames(dt)) {
+      dt[, total_votos := as.numeric(as.character(total_votos))]
+    }
+    
+    # Eliminar filas con part_ciud NA si es necesario
+    dt <- dt[!is.na(part_ciud)]
     
     # Verificar y normalizar columna 'estado'
     if ("estado" %in% colnames(dt)) {

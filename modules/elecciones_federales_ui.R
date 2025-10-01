@@ -8,8 +8,8 @@ elecciones_federales_ui <- function(id) {
       sidebarPanel(
         id = ns("sidebar_panel"),
         selectInput(ns("year"), "Año de elección:", 
-                    choices = c(2006, 2009, 2012, 2015, 2018, 2021, 2023), 
-                    selected = 2021),
+                    choices = c(2006, 2009, 2012, 2015, 2018, 2021, 2023, 2024), 
+                    selected = 2024),
         selectInput(ns("cargo"), "Cargo de elección:", 
                     choices = c("DIPUTACION FEDERAL", "SENADURIA", "PRESIDENCIA"), 
                     selected = "DIPUTACION FEDERAL"),
