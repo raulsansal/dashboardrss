@@ -52,7 +52,7 @@ ui <- fluidPage(
       
       tabsetPanel(
         id = "main_tabs",
-        selected = "lista",  # Establecer "Lista Nominal Electoral" como pestaña inicial
+        selected = "lista",
         
         tabPanel("Lista Nominal Electoral", value = "lista",
                  h2("Proyección de Lista Nominal Electoral"),
@@ -63,8 +63,23 @@ ui <- fluidPage(
                                   `data-sidebar-id` = "sidebar-right-lista")
                  ),
                  div(id = "sidebar-right-lista", class = "sidebar-right",
-                     h3("Análisis de Texto Dinámico"),
-                     p("Aquí va el análisis dinámico para la Lista Nominal Electoral.")
+                     uiOutput("text_analysis-titulo_lista"),
+                     uiOutput("text_analysis-alcance_lista"),
+                     div(class = "sidebar-section",
+                         uiOutput("text_analysis-resumen_general_lista")
+                     ),
+                     div(class = "sidebar-section",
+                         uiOutput("text_analysis-demografia_lista")
+                     ),
+                     div(class = "sidebar-section",
+                         uiOutput("text_analysis-comparacion_lista")
+                     )
+                 ),
+                 fluidRow(
+                   column(12, 
+                          h3("Próximamente: Dashboard interactivo de Lista Nominal Electoral", 
+                             align = "center", style = "color: #666; margin-top: 50px;")
+                   )
                  )
         ),
         
@@ -120,6 +135,7 @@ ui <- fluidPage(
       )
   )
 )
+
 
 # Definir la lógica del servidor (server)
 server <- function(input, output, session) {
