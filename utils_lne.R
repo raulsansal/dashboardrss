@@ -1,3 +1,9 @@
+# utils_lne.R
+# Funciones utilitarias para manejo de datos de Lista Nominal Electoral (LNE)
+
+library(data.table)
+library(here)
+
 #' @title Encontrar directorios de datos de la Lista Nominal Electoral
 #' @description Busca las rutas de los directorios de datos históricos y semanales de la LNE.
 #' @return Lista con rutas a los directorios 'historico' y 'semanal'
@@ -40,6 +46,7 @@ extract_fecha_lne <- function(archivo) {
 }
 
 #' @title Generar catálogo de fechas disponibles
+#' @description Escanea directorios y genera listas de fechas disponibles por tipo
 #' @return Lista con fechas históricas y semanales
 build_lne_catalog <- function() {
   dirs <- find_lne_data_dirs()
@@ -54,7 +61,8 @@ build_lne_catalog <- function() {
     files_hist <- list.files(dirs$historico, pattern = "^derfe_pdln_\\d{8}_base\\.csv$", full.names = FALSE)
     fechas_hist <- sapply(files_hist, extract_fecha_lne, USE.NAMES = FALSE)
     fechas_hist <- fechas_hist[!sapply(fechas_hist, is.null)]
-    catalog$historico <- sort(unique(fechas_hist), decreasing = TRUE)
+    catalog$historico <- sort(unique(as.Date(unlist(fechas_hist), origin = "1970-01-01")), decreasing = TRUE)
+    message("📅 Fechas históricas encontradas: ", length(catalog$historico))
   }
   
   # --- Semanal ---
@@ -64,13 +72,192 @@ build_lne_catalog <- function() {
       files_sem <- list.files(dirs$semanal, pattern = pattern, full.names = FALSE)
       fechas_sem <- sapply(files_sem, extract_fecha_lne, USE.NAMES = FALSE)
       fechas_sem <- fechas_sem[!sapply(fechas_sem, is.null)]
-      catalog$semanal[[tipo]] <- sort(unique(fechas_sem), decreasing = TRUE)
+      catalog$semanal[[tipo]] <- sort(unique(as.Date(unlist(fechas_sem), origin = "1970-01-01")), decreasing = TRUE)
     }
+    message("📅 Fechas semanales (edad): ", length(catalog$semanal$edad))
+    message("📅 Fechas semanales (origen): ", length(catalog$semanal$origen))
+    message("📅 Fechas semanales (sexo): ", length(catalog$semanal$sexo))
   }
   
   # Intersección de fechas semanales (solo fechas con los 3 archivos)
   fechas_comunes <- Reduce(intersect, catalog$semanal)
   catalog$semanal_comun <- sort(fechas_comunes, decreasing = TRUE)
+  message("📅 Fechas semanales completas (edad+origen+sexo): ", length(catalog$semanal_comun))
   
   return(catalog)
+}
+
+#' @title Normalizar nombres de columnas de archivo histórico
+#' @param dt data.table con columnas originales
+#' @return data.table con columnas normalizadas
+normalizar_columnas_historico <- function(dt) {
+  
+  cols_originales <- colnames(dt)
+  message("🔍 Columnas originales del CSV: ", paste(head(cols_originales, 10), collapse = " | "))
+  
+  tryCatch({
+    # Limpiar nombres de columnas (quitar saltos de línea y espacios extra)
+    cols_limpios <- gsub("\n", " ", cols_originales)
+    cols_limpios <- gsub("\\s+", " ", cols_limpios)
+    cols_limpios <- trimws(cols_limpios)
+    setnames(dt, old = cols_originales, new = cols_limpios)
+    
+    # Renombrar claves geográficas
+    if ("CLAVE ENTIDAD" %in% colnames(dt)) {
+      setnames(dt, "CLAVE ENTIDAD", "clave_entidad", skip_absent = TRUE)
+    }
+    
+    if ("CLAVE DISTRITO" %in% colnames(dt)) {
+      setnames(dt, "CLAVE DISTRITO", "clave_distrito", skip_absent = TRUE)
+    }
+    
+    if ("CLAVE MUNICIPIO" %in% colnames(dt)) {
+      setnames(dt, "CLAVE MUNICIPIO", "clave_municipio", skip_absent = TRUE)
+    }
+    
+    if ("SECCION" %in% colnames(dt)) {
+      setnames(dt, "SECCION", "seccion", skip_absent = TRUE)
+    }
+    
+    message("✅ Columnas geográficas normalizadas")
+    
+  }, error = function(e) {
+    message("⚠️ Error al normalizar columnas históricas: ", e$message)
+  })
+  
+  return(dt)
+}
+
+#' @title Normalizar nombres de columnas de archivo semanal
+#' @param dt data.table con columnas originales
+#' @return data.table con columnas normalizadas
+normalizar_columnas_semanal <- function(dt) {
+  # Las columnas semanales ya vienen con nombres más consistentes
+  # Solo necesitamos estandarizar guiones bajos y mayúsculas
+  
+  cols_originales <- colnames(dt)
+  cols_nuevas <- tolower(cols_originales)
+  cols_nuevas <- gsub("\\s+", "_", cols_nuevas)  # Espacios a guiones bajos
+  cols_nuevas <- gsub("\n", "_", cols_nuevas)   # Saltos de línea a guiones bajos
+  cols_nuevas <- gsub("__+", "_", cols_nuevas)  # Múltiples guiones bajos a uno
+  
+  setnames(dt, cols_originales, cols_nuevas)
+  
+  return(dt)
+}
+
+#' @title Catálogo de entidades federativas
+#' @return Named vector con clave como names y nombre como values
+catalogo_entidades <- function() {
+  c(
+    "1" = "AGUASCALIENTES",
+    "2" = "BAJA CALIFORNIA",
+    "3" = "BAJA CALIFORNIA SUR",
+    "4" = "CAMPECHE",
+    "5" = "COAHUILA",
+    "6" = "COLIMA",
+    "7" = "CHIAPAS",
+    "8" = "CHIHUAHUA",
+    "9" = "CIUDAD DE MEXICO",
+    "10" = "DURANGO",
+    "11" = "GUANAJUATO",
+    "12" = "GUERRERO",
+    "13" = "HIDALGO",
+    "14" = "JALISCO",
+    "15" = "MEXICO",
+    "16" = "MICHOACAN",
+    "17" = "MORELOS",
+    "18" = "NAYARIT",
+    "19" = "NUEVO LEON",
+    "20" = "OAXACA",
+    "21" = "PUEBLA",
+    "22" = "QUERETARO",
+    "23" = "QUINTANA ROO",
+    "24" = "SAN LUIS POTOSI",
+    "25" = "SINALOA",
+    "26" = "SONORA",
+    "27" = "TABASCO",
+    "28" = "TAMAULIPAS",
+    "29" = "TLAXCALA",
+    "30" = "VERACRUZ",
+    "31" = "YUCATAN",
+    "32" = "ZACATECAS",
+    "0" = "RESIDENTES EXTRANJERO"
+  )
+}
+
+#' @title Limpiar datos especiales (TOTALES y RESIDENTES EXTRANJERO)
+#' @param dt data.table con datos LNE
+#' @param incluir_extranjero Lógico, si incluir residentes en el extranjero
+#' @param incluir_totales Lógico, si incluir fila de totales
+#' @return data.table limpio
+limpiar_filas_especiales <- function(dt, incluir_extranjero = TRUE, incluir_totales = FALSE) {
+  
+  # Identificar fila de totales (última fila usualmente, o donde clave_entidad == "TOTALES")
+  if (!incluir_totales) {
+    # Detectar por contenido de texto "TOTALES" en cualquier columna de texto
+    cols_texto <- sapply(dt, is.character)
+    if (any(cols_texto)) {
+      filas_totales <- apply(dt[, ..cols_texto], 1, function(row) any(grepl("TOTALES", row, ignore.case = TRUE)))
+      if (any(filas_totales)) {
+        dt <- dt[!filas_totales]
+        message("🧹 Fila de TOTALES removida")
+      }
+    }
+  }
+  
+  # Identificar residentes extranjero (clave_entidad == "1" o "0" y distrito == "0")
+  if (!incluir_extranjero) {
+    if ("clave_entidad" %in% colnames(dt) && "clave_distrito" %in% colnames(dt)) {
+      dt <- dt[!(clave_entidad %in% c("0", "1") & clave_distrito == "0")]
+      message("🧹 Residentes EXTRANJERO removidos")
+    }
+  }
+  
+  return(dt)
+}
+
+#' @title Validar integridad de datos cargados
+#' @param dt data.table con datos LNE
+#' @param tipo "historico" o "semanal"
+#' @return Lista con resultado de validación (valido = TRUE/FALSE, mensajes = character vector)
+validar_datos_lne <- function(dt, tipo = "historico") {
+  resultado <- list(valido = TRUE, mensajes = character(0))
+  
+  # Verificar que no esté vacío
+  if (nrow(dt) == 0) {
+    resultado$valido <- FALSE
+    resultado$mensajes <- c(resultado$mensajes, "❌ Data.table vacío")
+    return(resultado)
+  }
+  
+  # Verificar columnas geográficas
+  cols_geograficas <- c("clave_entidad", "clave_distrito", "clave_municipio", "seccion")
+  faltantes <- setdiff(cols_geograficas, colnames(dt))
+  if (length(faltantes) > 0) {
+    resultado$valido <- FALSE
+    resultado$mensajes <- c(resultado$mensajes, paste("❌ Faltan columnas geográficas:", paste(faltantes, collapse = ", ")))
+  }
+  
+  # Verificar columnas numéricas clave
+  if (tipo == "historico") {
+    cols_numericas <- c("padron_electoral", "lista_nominal")
+  } else {
+    cols_numericas <- c("padron_electoral", "lista_nominal")
+  }
+  
+  for (col in cols_numericas) {
+    if (col %in% colnames(dt)) {
+      if (!is.numeric(dt[[col]])) {
+        resultado$valido <- FALSE
+        resultado$mensajes <- c(resultado$mensajes, paste("❌ Columna", col, "no es numérica"))
+      }
+    }
+  }
+  
+  if (resultado$valido) {
+    resultado$mensajes <- c(resultado$mensajes, "✅ Validación exitosa")
+  }
+  
+  return(resultado)
 }

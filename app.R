@@ -22,17 +22,35 @@ library(leaflet)
 library(leaflet.providers)
 library(tidyr)
 library(mapview)
+library(data.table)  # Necesaria para datos_lne.R
 
 # Cargar archivos compartidos
 source("server/partidos_mapping.R")
 source("server/datos.R")
 source("server/partidos_colores.R")
 
+# IMPORTANTE: Cargar módulo de LNE DESPUÉS de cargar utils_lne.R
+if (file.exists("utils_lne.R")) {
+  source("utils_lne.R")
+  message("✅ utils_lne.R cargado")
+} else {
+  stop("❌ No se encontró utils_lne.R")
+}
+
+if (file.exists("server/datos_lne.R")) {
+  source("server/datos_lne.R")
+  message("✅ datos_lne.R cargado")
+} else {
+  stop("❌ No se encontró server/datos_lne.R")
+}
+
 # Cargar módulos de UI y server para cada pestaña
 source("modules/elecciones_federales_ui.R")
 source("modules/elecciones_federales_server.R")
 source("modules/viz_geografica_ui.R")
 source("modules/viz_geografica_server.R")
+source("modules/lista_nominal_ui.R")
+source("modules/lista_nominal_server.R")
 
 # Definir la interfaz de usuario (UI)
 ui <- fluidPage(
@@ -55,32 +73,7 @@ ui <- fluidPage(
         selected = "lista",
         
         tabPanel("Lista Nominal Electoral", value = "lista",
-                 h2("Proyección de Lista Nominal Electoral"),
-                 div(class = "toggle-container",
-                     actionButton(inputId = "toggle-sidebar-lista", 
-                                  label = ">>", 
-                                  class = "toggle-sidebar-btn", 
-                                  `data-sidebar-id` = "sidebar-right-lista")
-                 ),
-                 div(id = "sidebar-right-lista", class = "sidebar-right",
-                     uiOutput("text_analysis-titulo_lista"),
-                     uiOutput("text_analysis-alcance_lista"),
-                     div(class = "sidebar-section",
-                         uiOutput("text_analysis-resumen_general_lista")
-                     ),
-                     div(class = "sidebar-section",
-                         uiOutput("text_analysis-demografia_lista")
-                     ),
-                     div(class = "sidebar-section",
-                         uiOutput("text_analysis-comparacion_lista")
-                     )
-                 ),
-                 fluidRow(
-                   column(12, 
-                          h3("Próximamente: Dashboard interactivo de Lista Nominal Electoral", 
-                             align = "center", style = "color: #666; margin-top: 50px;")
-                   )
-                 )
+                 lista_nominal_ui("lista")
         ),
         
         tabPanel("Elecciones Federales", value = "federales",
@@ -136,12 +129,20 @@ ui <- fluidPage(
   )
 )
 
-
 # Definir la lógica del servidor (server)
 server <- function(input, output, session) {
   # Verificación mínima de dependencias críticas
   if(!exists("cargar_datos") || !exists("partidos_mapping") || !exists("partidos_colores")) {
     stop("Faltan dependencias críticas. Verifica que los archivos de servidor estén cargados correctamente.")
+  }
+  
+  # Verificar que el módulo LNE se haya cargado correctamente
+  if(!exists("cargar_lne") || !exists("LNE_CATALOG")) {
+    warning("⚠️ Módulo de Lista Nominal Electoral no cargado correctamente. Algunas funcionalidades pueden no estar disponibles.")
+  } else {
+    message("✅ Módulo LNE cargado correctamente")
+    message("📅 Fechas históricas disponibles: ", length(LNE_CATALOG$historico))
+    message("📅 Fechas semanales disponibles: ", length(LNE_CATALOG$semanal_comun))
   }
   
   # Definir combinacion_valida para elecciones federales y visualización geográfica
@@ -180,7 +181,7 @@ server <- function(input, output, session) {
     cargo %in% valid_cargos
   })
   
-  # Definir datos_columnas
+  # Definir datos_columnas para elecciones federales
   datos_columnas <- reactive({
     req(input$main_tabs, combinacion_valida())
     if (input$main_tabs == "federales") {
@@ -215,6 +216,7 @@ server <- function(input, output, session) {
   })
   
   # Llamar a los módulos principales
+  lista_nominal_server("lista")  # Este módulo ahora maneja sus propios reactivos internamente
   elecciones_federales_server("federales")
   viz_geografica_server("geografica", reactive({ 
     if (input$main_tabs == "geografica") datos_columnas() else NULL 
