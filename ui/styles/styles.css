@@ -83,7 +83,7 @@ body {
   justify-content: center;
 }
 
-/* Estilo específico para el gráfico de participación */
+/* Estilo específico para el gráfico de participación de Federales */
 #federales-main-participacion_plot {
   display: block;
   margin-left: 160px;
@@ -92,7 +92,7 @@ body {
   height: 432px !important;
 }
 
-/* Forzar altura del gráfico de barras */
+/* Forzar altura del gráfico de barras de Federales */
 .shiny-plot-output#federales-main-grafico_barras {
   width: 100% !important;
   height: 450px !important;
@@ -104,7 +104,7 @@ img, .shiny-plot-output {
   height: auto;
 }
 
-/* Forzar altura del gráfico de participación */
+/* Forzar altura del gráfico de participación de Federales */
 .shiny-plot-output#federales-main-participacion_plot {
   height: 432px !important;
 }
@@ -126,20 +126,6 @@ img, .shiny-plot-output {
 /* Estilos para tablas */
 .dataTables_wrapper {
   font-size: 0.875em;
-}
-
-/* Títulos de gráficos */
-.main-panel h3 {
-  font-size: 1.5em;
-  color: #333;
-  margin: 0 0 10px 0;
-  text-align: center;
-}
-
-/* -------- ESPACIADO PARA DATATABLES -------- */
-
-/* Agregar espacio inferior al contenedor completo del DataTable */
-.dataTables_wrapper {
   margin-bottom: 50px !important;
   padding-bottom: 20px !important;
 }
@@ -159,6 +145,14 @@ img, .shiny-plot-output {
 /* Espaciado general para todos los elementos de paginación */
 .dataTables_wrapper .dataTables_paginate .paginate_button {
   margin-bottom: 10px !important;
+}
+
+/* Títulos de gráficos */
+.main-panel h3 {
+  font-size: 1.5em;
+  color: #333;
+  margin: 0 0 10px 0;
+  text-align: center;
 }
 
 /* -------- SIDEBAR DERECHO -------- */
@@ -202,7 +196,7 @@ img, .shiny-plot-output {
 
 /* Botón para ocultar/mostrar el sidebar */
 .toggle-sidebar-btn {
-  background-color: #EE701D;
+  background-color: #EE701D !important;
   color: white;
   border: none;
   padding: 15px 10px;
@@ -222,7 +216,7 @@ img, .shiny-plot-output {
 /* Efecto hover para el botón */
 .toggle-sidebar-btn:hover {
   color: white;
-  background-color: #BF3601;
+  background-color: #BF3601 !important;
 }
 
 /* Estilos para el panel de análisis en el sidebar derecho */
