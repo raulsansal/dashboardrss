@@ -41,7 +41,7 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
   }
   
   fecha_str <- format(fecha, "%Y%m%d")
-  message("📂 Cargando datos LNE: tipo=", tipo_corte, ", fecha=", fecha_str, ", dimension=", dimension)
+  message("📂 Llamando cargar_lne: tipo=", tipo_corte, ", fecha=", fecha_str, ", dimension=", dimension, ", estado=", estado)
   
   # ========== CARGA DE DATOS HISTÓRICOS ==========
   if (tipo_corte == "historico") {
@@ -359,20 +359,93 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
       ))
     }
     
-    # Cargar archivos - usar read.delim para SEMANALES (usan tabulador)
+    # Cargar archivos - SOLUCIÓN ROBUSTA para diferentes encodings y separadores de línea
     dts <- list()
     for (tipo in names(archivos)) {
+      message("📂 Cargando datos LNE: tipo=semanal, fecha=", fecha_str, ", dimension=", tipo)
+      
       dts[[tipo]] <- tryCatch({
-        df <- read.delim(
-          archivos[[tipo]],
-          header = TRUE,
-          stringsAsFactors = FALSE,
-          fileEncoding = "UTF-8",
-          check.names = FALSE,
-          quote = "\"",
-          na.strings = c("", "NA"),
-          strip.white = TRUE
-        )
+        # ESTRATEGIA: Probar múltiples métodos de lectura
+        df <- NULL
+        
+        # Método 1: read.table con sep="\t" (tabulador)
+        df <- tryCatch({
+          read.table(
+            archivos[[tipo]],
+            header = TRUE,
+            sep = "\t",
+            stringsAsFactors = FALSE,
+            fileEncoding = "UTF-8",
+            check.names = FALSE,
+            quote = "\"",
+            na.strings = c("", "NA"),
+            strip.white = TRUE,
+            comment.char = "",
+            fill = TRUE
+          )
+        }, error = function(e) NULL)
+        
+        # Método 2: Si falló, intentar con data.table::fread (más robusto)
+        if (is.null(df) || ncol(df) == 1) {
+          message("⚠️ Método 1 falló, intentando con fread()...")
+          df <- tryCatch({
+            data.table::fread(
+              archivos[[tipo]],
+              header = TRUE,
+              sep = "auto",
+              stringsAsFactors = FALSE,
+              encoding = "UTF-8",
+              check.names = FALSE,
+              quote = "\"",
+              na.strings = c("", "NA"),
+              strip.white = TRUE,
+              fill = TRUE,
+              data.table = FALSE
+            )
+          }, error = function(e) NULL)
+        }
+        
+        # Método 3: Si aún falla, leer todo el archivo y parsear manualmente
+        if (is.null(df) || ncol(df) == 1) {
+          message("⚠️ Método 2 falló, intentando lectura manual completa...")
+          
+          # Leer TODO el archivo como un solo string
+          texto_completo <- paste(readLines(archivos[[tipo]], encoding = "UTF-8", warn = FALSE), collapse = "\n")
+          
+          # Detectar si usa \r como separador de línea (Mac antiguo)
+          if (grepl("\r", texto_completo) && !grepl("\n", texto_completo)) {
+            texto_completo <- gsub("\r", "\n", texto_completo)
+            message("✅ Convertido \\r a \\n")
+          }
+          
+          # Escribir temporalmente y re-leer
+          temp_file <- tempfile(fileext = ".csv")
+          writeLines(texto_completo, temp_file)
+          
+          df <- read.table(
+            temp_file,
+            header = TRUE,
+            sep = "\t",
+            stringsAsFactors = FALSE,
+            check.names = FALSE,
+            quote = "\"",
+            na.strings = c("", "NA"),
+            strip.white = TRUE,
+            fill = TRUE
+          )
+          
+          unlink(temp_file)
+        }
+        
+        if (is.null(df)) {
+          stop("Todos los métodos de lectura fallaron")
+        }
+        
+        message("📊 Filas: ", nrow(df), " | Columnas: ", ncol(df))
+        
+        if (ncol(df) == 1) {
+          stop("Archivo parseado con solo 1 columna - formato no reconocido")
+        }
         
         # Limpiar nombres
         nombres <- colnames(df)
@@ -400,7 +473,7 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
       }
       
       dts[[tipo]] <- normalizar_columnas_semanal(dts[[tipo]])
-      message("📊 Cargado (", tipo, "): ", nrow(dts[[tipo]]), " filas")
+      message("📊 Cargado (", tipo, "): ", nrow(dts[[tipo]]), " filas, ", ncol(dts[[tipo]]), " columnas")
     }
     
     # Usar sexo como base (o el primero disponible)
@@ -412,7 +485,7 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
     
     # Convertir columnas numéricas
     for (dt_nombre in names(dts)) {
-      cols_num <- grep("padron|padrón|lista|hombres|mujeres|binario|electoral|nominal", 
+      cols_num <- grep("padron|padrón|lista|hombres|mujeres|binario|electoral|nominal|^pad_|^ln_|_\\d+_", 
                        colnames(dts[[dt_nombre]]), value = TRUE, ignore.case = TRUE)
       
       for (col in cols_num) {
@@ -420,6 +493,8 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
           dts[[dt_nombre]][[col]] <- as.numeric(gsub('[,"]', '', as.character(dts[[dt_nombre]][[col]])))
         }
       }
+      
+      message("🔢 Procesadas ", length(cols_num), " columnas numéricas en ", dt_nombre)
     }
     
     dt_completo <- dt_base
@@ -438,6 +513,97 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
       }
     }
     
+    # Verificar si padron_electoral y lista_nominal ya existen y son numéricos
+    if ("padron_electoral" %in% colnames(dt_completo)) {
+      # Convertir a numérico si no lo es
+      if (!is.numeric(dt_completo$padron_electoral)) {
+        dt_completo[, padron_electoral := as.numeric(gsub('[,"]', '', as.character(padron_electoral)))]
+        message("✅ Convertido padron_electoral a numérico")
+      }
+      message("📊 Padrón total: ", format(sum(dt_completo$padron_electoral, na.rm = TRUE), big.mark = ","))
+    }
+    
+    if ("lista_nominal" %in% colnames(dt_completo)) {
+      # Convertir a numérico si no lo es
+      if (!is.numeric(dt_completo$lista_nominal)) {
+        dt_completo[, lista_nominal := as.numeric(gsub('[,"]', '', as.character(lista_nominal)))]
+        message("✅ Convertido lista_nominal a numérico")
+      }
+      message("📊 Lista total: ", format(sum(dt_completo$lista_nominal, na.rm = TRUE), big.mark = ","))
+    }
+    
+    # Si no existen las columnas de totales, calcularlas
+    if (!"padron_electoral" %in% colnames(dt_completo)) {
+      # Opción 1: Desde columnas de sexo (hombres + mujeres)
+      if ("padron_hombres" %in% colnames(dt_completo) && "padron_mujeres" %in% colnames(dt_completo)) {
+        dt_completo[, padron_hombres := as.numeric(gsub('[,"]', '', as.character(padron_hombres)))]
+        dt_completo[, padron_mujeres := as.numeric(gsub('[,"]', '', as.character(padron_mujeres)))]
+        
+        dt_completo[, padron_electoral := padron_hombres + padron_mujeres]
+        message("✅ Calculado padron_electoral = padron_hombres + padron_mujeres")
+        message("📊 Padrón total: ", format(sum(dt_completo$padron_electoral, na.rm = TRUE), big.mark = ","))
+      } 
+      # Opción 2: Desde columnas de origen (PAD_AGUASCALIENTES + PAD_BAJA_CALIFORNIA + ...)
+      else {
+        cols_padron_origen <- grep("^PAD_", colnames(dt_completo), value = TRUE)
+        if (length(cols_padron_origen) > 0) {
+          message("✅ Detectadas ", length(cols_padron_origen), " columnas de padrón por origen")
+          
+          # Convertir todas a numérico
+          for (col in cols_padron_origen) {
+            dt_completo[[col]] <- as.numeric(gsub('[,"]', '', as.character(dt_completo[[col]])))
+          }
+          
+          # Sumar todas las columnas de origen
+          dt_completo[, padron_electoral := rowSums(.SD, na.rm = TRUE), .SDcols = cols_padron_origen]
+          message("✅ Calculado padron_electoral desde ", length(cols_padron_origen), " columnas de origen")
+          message("📊 Padrón total: ", format(sum(dt_completo$padron_electoral, na.rm = TRUE), big.mark = ","))
+        } else {
+          message("⚠️ No se pudo calcular padron_electoral - faltan columnas")
+        }
+      }
+    }
+    
+    if (!"lista_nominal" %in% colnames(dt_completo)) {
+      # Opción 1: Desde columnas de sexo
+      if ("lista_hombres" %in% colnames(dt_completo) && "lista_mujeres" %in% colnames(dt_completo)) {
+        dt_completo[, lista_hombres := as.numeric(gsub('[,"]', '', as.character(lista_hombres)))]
+        dt_completo[, lista_mujeres := as.numeric(gsub('[,"]', '', as.character(lista_mujeres)))]
+        
+        dt_completo[, lista_nominal := lista_hombres + lista_mujeres]
+        message("✅ Calculado lista_nominal = lista_hombres + lista_mujeres")
+        message("📊 Lista total: ", format(sum(dt_completo$lista_nominal, na.rm = TRUE), big.mark = ","))
+      }
+      # Opción 2: Desde columnas de origen (LN_AGUASCALIENTES + LN_BAJA_CALIFORNIA + ...)
+      else {
+        cols_lista_origen <- grep("^LN_", colnames(dt_completo), value = TRUE)
+        if (length(cols_lista_origen) > 0) {
+          message("✅ Detectadas ", length(cols_lista_origen), " columnas de lista por origen")
+          
+          # Convertir todas a numérico
+          for (col in cols_lista_origen) {
+            dt_completo[[col]] <- as.numeric(gsub('[,"]', '', as.character(dt_completo[[col]])))
+          }
+          
+          # Sumar todas las columnas de origen
+          dt_completo[, lista_nominal := rowSums(.SD, na.rm = TRUE), .SDcols = cols_lista_origen]
+          message("✅ Calculado lista_nominal desde ", length(cols_lista_origen), " columnas de origen")
+          message("📊 Lista total: ", format(sum(dt_completo$lista_nominal, na.rm = TRUE), big.mark = ","))
+        } else {
+          message("⚠️ No se pudo calcular lista_nominal - faltan columnas")
+        }
+      }
+    }
+    
+    # Convertir otras columnas numéricas por sexo
+    for (col in c("padron_hombres", "padron_mujeres", "lista_hombres", "lista_mujeres", 
+                  "padron_no_binario", "lista_no_binario")) {
+      if (col %in% colnames(dt_completo) && !is.numeric(dt_completo[[col]])) {
+        dt_completo[[col]] <- as.numeric(gsub('[,"]', '', as.character(dt_completo[[col]])))
+        message("✅ Convertido ", col, " a numérico")
+      }
+    }
+    
     # Limpiar filas especiales
     dt_completo <- limpiar_filas_especiales(dt_completo, incluir_extranjero = incluir_extranjero, 
                                             incluir_totales = FALSE)
@@ -446,6 +612,7 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
     if ("padron_electoral" %in% colnames(dt_completo) && "lista_nominal" %in% colnames(dt_completo)) {
       if (!"tasa_inclusion" %in% colnames(dt_completo)) {
         dt_completo[padron_electoral > 0, tasa_inclusion := round((lista_nominal / padron_electoral) * 100, 2)]
+        message("✅ Tasa de inclusión calculada")
       }
     }
     
@@ -493,6 +660,10 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
     } else character(0)
     
     message("✅ Datos semanales cargados: ", nrow(dt_filtrado), " filas")
+    if ("padron_electoral" %in% colnames(dt_filtrado) && "lista_nominal" %in% colnames(dt_filtrado)) {
+      message("📊 Resumen final: padrón=", format(sum(dt_filtrado$padron_electoral, na.rm = TRUE), big.mark = ","), 
+              ", lista=", format(sum(dt_filtrado$lista_nominal, na.rm = TRUE), big.mark = ","))
+    }
     
     return(list(
       datos = as.data.frame(dt_filtrado),

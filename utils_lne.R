@@ -132,16 +132,84 @@ normalizar_columnas_historico <- function(dt) {
 #' @param dt data.table con columnas originales
 #' @return data.table con columnas normalizadas
 normalizar_columnas_semanal <- function(dt) {
-  # Las columnas semanales ya vienen con nombres más consistentes
-  # Solo necesitamos estandarizar guiones bajos y mayúsculas
+  # CRÍTICO: Si solo hay 1 columna, el archivo no se parseó correctamente
+  if (ncol(dt) == 1) {
+    message("⚠️ Solo 1 columna detectada, intentando re-parsear con separador de tabulador")
+    
+    # Obtener el texto crudo de la única columna
+    primera_col <- names(dt)[1]
+    
+    # Si la primera columna contiene tabuladores, necesitamos re-parsear
+    if (grepl("\t", primera_col)) {
+      message("✅ Detectados tabuladores en el encabezado, re-parseando...")
+      
+      # Separar el encabezado por tabulador
+      headers <- strsplit(primera_col, "\t")[[1]]
+      headers <- trimws(headers)
+      
+      # Separar cada fila por tabulador
+      filas_parseadas <- lapply(1:nrow(dt), function(i) {
+        valores <- strsplit(as.character(dt[[primera_col]][i]), "\t")[[1]]
+        valores <- trimws(valores)
+        
+        # Asegurarse de que tenga la misma longitud que los headers
+        if (length(valores) < length(headers)) {
+          valores <- c(valores, rep(NA, length(headers) - length(valores)))
+        } else if (length(valores) > length(headers)) {
+          valores <- valores[1:length(headers)]
+        }
+        
+        return(valores)
+      })
+      
+      # Crear nuevo data.table correctamente parseado
+      dt_nuevo <- data.table::data.table(do.call(rbind, filas_parseadas))
+      colnames(dt_nuevo) <- headers
+      
+      message("✅ Re-parseado exitoso: ", ncol(dt_nuevo), " columnas")
+      dt <- dt_nuevo
+    }
+  }
   
+  # Ahora normalizar nombres de columnas
   cols_originales <- colnames(dt)
-  cols_nuevas <- tolower(cols_originales)
-  cols_nuevas <- gsub("\\s+", "_", cols_nuevas)  # Espacios a guiones bajos
-  cols_nuevas <- gsub("\n", "_", cols_nuevas)   # Saltos de línea a guiones bajos
-  cols_nuevas <- gsub("__+", "_", cols_nuevas)  # Múltiples guiones bajos a uno
   
-  setnames(dt, cols_originales, cols_nuevas)
+  # Limpiar espacios y saltos de línea
+  cols_nuevas <- gsub("\n", " ", cols_originales, fixed = TRUE)
+  cols_nuevas <- gsub("\r", "", cols_nuevas, fixed = TRUE)
+  cols_nuevas <- gsub("\\s+", " ", cols_nuevas)
+  cols_nuevas <- trimws(cols_nuevas)
+  
+  setnames(dt, cols_originales, cols_nuevas, skip_absent = TRUE)
+  
+  # Renombrar columnas geográficas estándar
+  mapeo_nombres <- c(
+    "CLAVE ENTIDAD" = "clave_entidad",
+    "NOMBRE ENTIDAD" = "nombre_entidad",
+    "CLAVE DISTRITO" = "clave_distrito",
+    "CABECERA DISTRITAL" = "cabecera_distrital",
+    "CLAVE MUNICIPIO" = "clave_municipio",
+    "NOMBRE MUNICIPIO" = "nombre_municipio",
+    "SECCION" = "seccion",
+    "PADRON HOMBRES" = "padron_hombres",
+    "PADRON MUJERES" = "padron_mujeres",
+    "PADRON NO BINARIO" = "padron_no_binario",
+    "PADRON ELECTORAL" = "padron_electoral",
+    "LISTA HOMBRES" = "lista_hombres",
+    "LISTA MUJERES" = "lista_mujeres",
+    "LISTA NO BINARIO" = "lista_no_binario",
+    "LISTA NOMINAL" = "lista_nominal"
+  )
+  
+  for (viejo in names(mapeo_nombres)) {
+    if (viejo %in% colnames(dt)) {
+      setnames(dt, viejo, mapeo_nombres[[viejo]], skip_absent = TRUE)
+      message("✅ Renombrado: ", viejo, " → ", mapeo_nombres[[viejo]])
+    }
+  }
+  
+  message("✅ Normalización completada: ", ncol(dt), " columnas")
+  message("📋 Columnas finales: ", paste(head(colnames(dt), 10), collapse = ", "))
   
   return(dt)
 }
