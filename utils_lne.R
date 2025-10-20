@@ -87,6 +87,104 @@ build_lne_catalog <- function() {
   return(catalog)
 }
 
+#' @title Crear catálogo de mapeo geográfico desde archivo semanal
+#' @description Carga un archivo semanal reciente y extrae el mapeo de claves a nombres
+#' @return Lista con mapeos: distritos (clave → nombre) y municipios (clave → nombre)
+crear_catalogo_geografico_lne <- function() {
+  message("🗺️ Creando catálogo geográfico desde datos semanales...")
+  
+  dirs <- find_lne_data_dirs()
+  
+  if (!dir.exists(dirs$semanal)) {
+    message("❌ Directorio semanal no existe")
+    return(list(distritos = character(0), municipios = character(0)))
+  }
+  
+  # Buscar el archivo semanal más reciente (origen tiene toda la info geográfica)
+  archivos_origen <- list.files(dirs$semanal, pattern = "^derfe_pdln_\\d{8}_origen\\.csv$", full.names = TRUE)
+  
+  if (length(archivos_origen) == 0) {
+    message("❌ No se encontraron archivos semanales de origen")
+    return(list(distritos = character(0), municipios = character(0)))
+  }
+  
+  # Usar el más reciente
+  archivo_mas_reciente <- tail(sort(archivos_origen), 1)
+  message("📂 Usando archivo: ", basename(archivo_mas_reciente))
+  
+  # Cargar archivo
+  dt <- tryCatch({
+    df <- data.table::fread(
+      archivo_mas_reciente,
+      header = TRUE,
+      sep = "auto",
+      stringsAsFactors = FALSE,
+      encoding = "UTF-8",
+      check.names = FALSE,
+      quote = "\"",
+      na.strings = c("", "NA"),
+      strip.white = TRUE,
+      fill = TRUE,
+      data.table = TRUE
+    )
+    
+    # Normalizar columnas
+    df <- normalizar_columnas_semanal(df)
+    df
+  }, error = function(e) {
+    message("❌ Error cargando archivo para catálogo: ", e$message)
+    return(NULL)
+  })
+  
+  if (is.null(dt) || nrow(dt) == 0) {
+    return(list(distritos = character(0), municipios = character(0)))
+  }
+  
+  # Crear mapeos
+  mapeo_distritos <- character(0)
+  mapeo_municipios <- character(0)
+  
+  # Mapeo de distritos: clave_entidad + clave_distrito → cabecera_distrital
+  if (all(c("clave_entidad", "clave_distrito", "cabecera_distrital") %in% colnames(dt))) {
+    dt_distritos <- unique(dt[!is.na(cabecera_distrital) & cabecera_distrital != "", 
+                              .(clave_entidad, clave_distrito, cabecera_distrital)])
+    
+    # Crear clave compuesta: "ENTIDAD_DISTRITO"
+    dt_distritos[, clave_compuesta := paste(clave_entidad, clave_distrito, sep = "_")]
+    
+    mapeo_distritos <- setNames(
+      dt_distritos$cabecera_distrital,
+      dt_distritos$clave_compuesta
+    )
+    
+    message("✅ Mapeo distritos creado: ", length(mapeo_distritos), " registros")
+  }
+  
+  # Mapeo de municipios: clave_entidad + clave_municipio → nombre_municipio
+  if (all(c("clave_entidad", "clave_municipio", "nombre_municipio") %in% colnames(dt))) {
+    dt_municipios <- unique(dt[!is.na(nombre_municipio) & nombre_municipio != "", 
+                               .(clave_entidad, clave_municipio, nombre_municipio)])
+    
+    # Crear clave compuesta: "ENTIDAD_MUNICIPIO"
+    dt_municipios[, clave_compuesta := paste(clave_entidad, clave_municipio, sep = "_")]
+    
+    mapeo_municipios <- setNames(
+      dt_municipios$nombre_municipio,
+      dt_municipios$clave_compuesta
+    )
+    
+    message("✅ Mapeo municipios creado: ", length(mapeo_municipios), " registros")
+  }
+  
+  catalogo <- list(
+    distritos = mapeo_distritos,
+    municipios = mapeo_municipios
+  )
+  
+  message("✅ Catálogo geográfico completo")
+  return(catalogo)
+}
+
 #' @title Normalizar nombres de columnas de archivo histórico
 #' @param dt data.table con columnas originales
 #' @return data.table con columnas normalizadas
@@ -155,6 +253,7 @@ normalizar_columnas_semanal <- function(dt) {
         # Asegurarse de que tenga la misma longitud que los headers
         if (length(valores) < length(headers)) {
           valores <- c(valores, rep(NA, length(headers) - length(valores)))
+          
         } else if (length(valores) > length(headers)) {
           valores <- valores[1:length(headers)]
         }

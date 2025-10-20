@@ -11,6 +11,9 @@ Sys.setlocale("LC_TIME", "es_ES.UTF-8")
 LNE_CATALOG <- build_lne_catalog()
 LNE_DIRS <- find_lne_data_dirs()
 
+# Crear catálogo geográfico global (UNA SOLA VEZ al iniciar)
+LNE_GEO_CATALOG <- crear_catalogo_geografico_lne()
+
 #' @title Cargar datos de Lista Nominal Electoral
 #' @description Función unificada para cargar datos históricos o semanales con filtros geográficos
 #' @param tipo_corte "historico" o "semanal"
@@ -130,6 +133,37 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
       message("✅ Entidades encontradas: ", length(unique(dt$nombre_entidad)))
     }
     
+    # ========== AGREGAR NOMBRES DE DISTRITOS Y MUNICIPIOS DESDE CATÁLOGO GEOGRÁFICO ==========
+    
+    # Agregar nombres de distritos desde catálogo geográfico
+    if (all(c("clave_entidad", "clave_distrito") %in% colnames(dt)) && exists("LNE_GEO_CATALOG", envir = .GlobalEnv)) {
+      geo_catalog <- get("LNE_GEO_CATALOG", envir = .GlobalEnv)
+      
+      if (length(geo_catalog$distritos) > 0) {
+        dt[, clave_compuesta_distrito := paste(clave_entidad, clave_distrito, sep = "_")]
+        dt[, cabecera_distrital := geo_catalog$distritos[clave_compuesta_distrito]]
+        dt[, clave_compuesta_distrito := NULL]  # Eliminar columna temporal
+        
+        n_mapeados <- sum(!is.na(dt$cabecera_distrital))
+        message("✅ Distritos mapeados: ", n_mapeados, "/", nrow(dt))
+      }
+    }
+    
+    # Agregar nombres de municipios desde catálogo geográfico
+    if (all(c("clave_entidad", "clave_municipio") %in% colnames(dt)) && exists("LNE_GEO_CATALOG", envir = .GlobalEnv)) {
+      geo_catalog <- get("LNE_GEO_CATALOG", envir = .GlobalEnv)
+      
+      if (length(geo_catalog$municipios) > 0) {
+        dt[, clave_compuesta_municipio := paste(clave_entidad, clave_municipio, sep = "_")]
+        dt[, nombre_municipio := geo_catalog$municipios[clave_compuesta_municipio]]
+        dt[, clave_compuesta_municipio := NULL]  # Eliminar columna temporal
+        
+        n_mapeados <- sum(!is.na(dt$nombre_municipio))
+        message("✅ Municipios mapeados: ", n_mapeados, "/", nrow(dt))
+      }
+    }
+    
+    # ========== FIN DE MAPEO GEOGRÁFICO ==========
     # Limpiar filas especiales ANTES de procesar columnas numéricas
     dt <- limpiar_filas_especiales(dt, incluir_extranjero = incluir_extranjero, incluir_totales = FALSE)
     
@@ -251,7 +285,7 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
     
     message("✅ Columnas numéricas procesadas correctamente")
     
-    # Aplicar filtros geográficos
+    # ========== APLICAR FILTROS GEOGRÁFICOS (USANDO NOMBRES) ==========
     dt_filtrado <- dt
     
     if (estado != "Nacional" && "nombre_entidad" %in% colnames(dt)) {
@@ -259,13 +293,15 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
       message("🔍 Filtro estado: ", estado, " → ", nrow(dt_filtrado), " filas")
     }
     
-    if (distrito != "Todos" && "clave_distrito" %in% colnames(dt_filtrado)) {
-      dt_filtrado <- dt_filtrado[clave_distrito == distrito]
+    # CAMBIO CRÍTICO: Usar cabecera_distrital en lugar de clave_distrito
+    if (distrito != "Todos" && "cabecera_distrital" %in% colnames(dt_filtrado)) {
+      dt_filtrado <- dt_filtrado[cabecera_distrital == distrito]
       message("🔍 Filtro distrito: ", distrito, " → ", nrow(dt_filtrado), " filas")
     }
     
-    if (municipio != "Todos" && "clave_municipio" %in% colnames(dt_filtrado)) {
-      dt_filtrado <- dt_filtrado[clave_municipio == municipio]
+    # CAMBIO CRÍTICO: Usar nombre_municipio en lugar de clave_municipio
+    if (municipio != "Todos" && "nombre_municipio" %in% colnames(dt_filtrado)) {
+      dt_filtrado <- dt_filtrado[nombre_municipio == municipio]
       message("🔍 Filtro municipio: ", municipio, " → ", nrow(dt_filtrado), " filas")
     }
     
@@ -274,7 +310,7 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
       message("🔍 Filtro sección: ", length(seccion), " secciones → ", nrow(dt_filtrado), " filas")
     }
     
-    # Generar listas únicas para filtros dinámicos
+    # ========== GENERAR LISTAS ÚNICAS PARA FILTROS DINÁMICOS (USANDO NOMBRES) ==========
     if ("nombre_entidad" %in% colnames(dt)) {
       todos_estados <- sort(unique(dt[nombre_entidad != "RESIDENTES EXTRANJERO" & 
                                         !is.na(nombre_entidad), nombre_entidad]))
@@ -282,12 +318,14 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
       todos_estados <- character(0)
     }
     
-    todos_distritos <- if ("clave_distrito" %in% colnames(dt_filtrado)) {
-      sort(unique(dt_filtrado[!is.na(clave_distrito) & clave_distrito != "0", clave_distrito]))
+    # CAMBIO CRÍTICO: Retornar nombres de distritos en lugar de claves
+    todos_distritos <- if ("cabecera_distrital" %in% colnames(dt_filtrado)) {
+      sort(unique(dt_filtrado[!is.na(cabecera_distrital), cabecera_distrital]))
     } else character(0)
     
-    todos_municipios <- if ("clave_municipio" %in% colnames(dt_filtrado)) {
-      sort(unique(dt_filtrado[!is.na(clave_municipio) & clave_municipio != "0", clave_municipio]))
+    # CAMBIO CRÍTICO: Retornar nombres de municipios en lugar de claves
+    todos_municipios <- if ("nombre_municipio" %in% colnames(dt_filtrado)) {
+      sort(unique(dt_filtrado[!is.na(nombre_municipio), nombre_municipio]))
     } else character(0)
     
     todas_secciones <- if ("seccion" %in% colnames(dt_filtrado)) {
@@ -616,7 +654,7 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
       }
     }
     
-    # Aplicar filtros
+    # ========== APLICAR FILTROS (SEMANALES YA TIENEN NOMBRES) ==========
     dt_filtrado <- dt_completo
     
     if (estado != "Nacional" && "nombre_entidad" %in% colnames(dt_filtrado)) {
@@ -722,3 +760,5 @@ obtener_resumen_lne <- function(datos_lne) {
 message("✅ Módulo datos_lne.R cargado")
 message("📅 Fechas históricas: ", length(LNE_CATALOG$historico))
 message("📅 Fechas semanales: ", length(LNE_CATALOG$semanal_comun))
+    
+    
