@@ -76,20 +76,20 @@ lista_nominal_server <- function(id) {
             
             updateSelectInput(session, "year",
                               choices = años_disponibles,
-                              selected = años_disponibles[1])  # Año más reciente
+                              selected = años_disponibles[1])
             
             message("📅 Años históricos actualizados: ", paste(años_disponibles, collapse = ", "))
           } else {
             updateSelectInput(session, "year", choices = NULL)
           }
           
-        } else {  # semanal
+        } else {
           if (length(catalog$semanal_comun) > 0) {
             años_disponibles <- sort(unique(format(catalog$semanal_comun, "%Y")), decreasing = TRUE)
             
             updateSelectInput(session, "year",
                               choices = años_disponibles,
-                              selected = años_disponibles[1])  # Año más reciente
+                              selected = años_disponibles[1])
             
             message("📅 Años semanales actualizados: ", paste(años_disponibles, collapse = ", "))
           } else {
@@ -111,34 +111,31 @@ lista_nominal_server <- function(id) {
           fechas_year <- catalog$historico[format(catalog$historico, "%Y") == input$year]
           
           if (length(fechas_year) > 0) {
-            fechas_year <- sort(fechas_year, decreasing = TRUE)  # Más reciente primero
+            fechas_year <- sort(fechas_year, decreasing = TRUE)
             
-            # Formatear en español
             choices <- setNames(
               as.character(fechas_year),
               sapply(fechas_year, formatear_fecha_es, formato = "%B %Y")
             )
             
-            # Capitalizar primera letra del mes
             names(choices) <- paste0(toupper(substr(names(choices), 1, 1)), 
                                      substr(names(choices), 2, nchar(names(choices))))
             
             updateSelectInput(session, "date",
                               choices = choices,
-                              selected = choices[1])  # Fecha más reciente
+                              selected = choices[1])
             
             message("📅 Fechas históricas para ", input$year, ": ", length(fechas_year), " opciones")
           } else {
             updateSelectInput(session, "date", choices = c("Sin datos" = ""))
           }
           
-        } else {  # semanal
+        } else {
           fechas_year <- catalog$semanal_comun[format(catalog$semanal_comun, "%Y") == input$year]
           
           if (length(fechas_year) > 0) {
-            fechas_year <- sort(fechas_year, decreasing = TRUE)  # Más reciente primero
+            fechas_year <- sort(fechas_year, decreasing = TRUE)
             
-            # Formatear en español
             choices <- setNames(
               as.character(fechas_year),
               sapply(fechas_year, formatear_fecha_es, formato = "%d de %B de %Y")
@@ -146,7 +143,7 @@ lista_nominal_server <- function(id) {
             
             updateSelectInput(session, "date",
                               choices = choices,
-                              selected = choices[1])  # Fecha más reciente
+                              selected = choices[1])
             
             message("📅 Fechas semanales para ", input$year, ": ", length(fechas_year), " opciones")
           } else {
@@ -176,27 +173,20 @@ lista_nominal_server <- function(id) {
       ))
     })
     
-    # ========== SELECTOR DE DESGLOSE DINÁMICO ==========
+    # ========== SELECTOR DE DESGLOSE DINÁMICO (SOLO PARA SEMANAL) ==========
     
     output$selector_desglose <- renderUI({
       req(input$tipo_corte)
       
-      if (input$tipo_corte == "historico") {
-        # Para histórico, solo sexo está disponible
-        selectInput(
-          ns("desglose"),
-          "Desglose:",
-          choices = c("Sexo"),
-          selected = "Sexo"
-        )
-      } else {
-        # Para semanal, están disponibles edad, sexo y origen
+      if (input$tipo_corte == "semanal") {
         selectInput(
           ns("desglose"),
           "Desglose:",
           choices = c("Sexo", "Rango de Edad", "Entidad de Origen"),
           selected = "Sexo"
         )
+      } else {
+        return(NULL)
       }
     })
     
@@ -241,7 +231,6 @@ lista_nominal_server <- function(id) {
         return(FALSE)
       }
       
-      # Verificar en catálogo
       if (exists("LNE_CATALOG", envir = .GlobalEnv)) {
         catalog <- get("LNE_CATALOG", envir = .GlobalEnv)
         
@@ -280,13 +269,11 @@ lista_nominal_server <- function(id) {
         return(NULL)
       }
       
-      # Parámetros de filtro
       estado_filtro <- if (input$entidad == "Nacional") "Nacional" else input$entidad
       distrito_filtro <- input$distrito %||% "Todos"
       municipio_filtro <- input$municipio %||% "Todos"
       seccion_filtro <- input$seccion %||% "Todas"
       
-      # Determinar dimensión
       dimension <- if (input$tipo_corte == "semanal") {
         switch(input$desglose %||% "Sexo",
                "Sexo" = "sexo",
@@ -389,7 +376,6 @@ lista_nominal_server <- function(id) {
     
     # ========== LLAMAR A SUBMÓDULOS ==========
     
-    # Cargar y ejecutar módulo principal (coordina gráficas y tablas)
     if (file.exists("modules/lista_nominal_server_main.R")) {
       source("modules/lista_nominal_server_main.R", local = TRUE)
       lista_nominal_server_main(input, output, session, datos_columnas, combinacion_valida)
@@ -397,7 +383,6 @@ lista_nominal_server <- function(id) {
       message("⚠️ No se encontró lista_nominal_server_main.R")
     }
     
-    # Cargar y ejecutar módulo de análisis textual
     if (file.exists("modules/lista_nominal_server_text_analysis.R")) {
       source("modules/lista_nominal_server_text_analysis.R", local = TRUE)
       lista_nominal_server_text_analysis(input, output, session, datos_columnas)
