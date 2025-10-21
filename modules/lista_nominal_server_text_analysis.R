@@ -41,33 +41,46 @@ lista_nominal_server_text_analysis <- function(input, output, session, datos_col
     ))
   })
   
-  # ========== ALCANCE DEL ANÁLISIS ==========
+  # ========== ALCANCE DEL ANÁLISIS (MEJORADO - ESTILO ELECCIONES FEDERALES) ==========
   
   output$`text_analysis-alcance_lista` <- renderUI({
     req(input$entidad)
     
-    alcance_texto <- if (input$entidad == "Nacional") {
-      "Ámbito: Nacional"
+    # Construir texto de alcance similar a Elecciones Federales
+    alcance_partes <- c()
+    
+    # Estado
+    if (input$entidad == "Nacional") {
+      alcance_texto <- "Ámbito: Nacional"
     } else {
-      texto_base <- paste("Entidad:", input$entidad)
+      alcance_partes <- c(paste("Estado:", input$entidad))
       
+      # Distrito
       if (!is.null(input$distrito) && input$distrito != "Todos") {
-        texto_base <- paste(texto_base, "<br>Distrito:", input$distrito)
+        alcance_partes <- c(alcance_partes, paste("Distrito:", input$distrito))
       }
       
+      # Municipio
       if (!is.null(input$municipio) && input$municipio != "Todos") {
-        texto_base <- paste(texto_base, "<br>Municipio:", input$municipio)
+        alcance_partes <- c(alcance_partes, paste("Municipio:", input$municipio))
       }
       
+      # Secciones
       if (!is.null(input$seccion) && length(input$seccion) > 0 && !("Todas" %in% input$seccion)) {
         if (length(input$seccion) == 1) {
-          texto_base <- paste(texto_base, "<br>Sección:", input$seccion)
+          alcance_partes <- c(alcance_partes, paste("Sección:", input$seccion))
+        } else if (length(input$seccion) <= 5) {
+          # Si son 5 o menos, mostrar todas
+          secciones_texto <- paste(input$seccion, collapse = ", ")
+          alcance_partes <- c(alcance_partes, paste("Secciones:", secciones_texto))
         } else {
-          texto_base <- paste(texto_base, "<br>Secciones:", length(input$seccion), "seleccionadas")
+          # Si son más de 5, mostrar cantidad
+          alcance_partes <- c(alcance_partes, paste("Secciones:", length(input$seccion), "seleccionadas"))
         }
       }
       
-      texto_base
+      # Unir con guiones como en Elecciones Federales
+      alcance_texto <- paste(alcance_partes, collapse = " - ")
     }
     
     HTML(paste0(
@@ -100,11 +113,42 @@ lista_nominal_server_text_analysis <- function(input, output, session, datos_col
     # Calcular diferencia entre padrón y lista
     diferencia <- resumen$total_padron - resumen$total_lista
     
+    # Construir texto descriptivo del filtro geográfico
+    filtro_geo <- if (input$entidad == "Nacional") {
+      "a nivel nacional"
+    } else {
+      texto_base <- paste("en el estado de", input$entidad)
+      
+      if (!is.null(input$distrito) && input$distrito != "Todos") {
+        texto_base <- paste(texto_base, ", distrito", input$distrito)
+      }
+      
+      if (!is.null(input$municipio) && input$municipio != "Todos") {
+        texto_base <- paste(texto_base, ", municipio de", input$municipio)
+      }
+      
+      if (!is.null(input$seccion) && length(input$seccion) > 0 && !("Todas" %in% input$seccion)) {
+        if (length(input$seccion) == 1) {
+          texto_base <- paste(texto_base, ", sección", input$seccion)
+        } else if (length(input$seccion) <= 5) {
+          secciones_texto <- paste(input$seccion, collapse = ", ")
+          texto_base <- paste(texto_base, ", secciones", secciones_texto)
+        } else {
+          texto_base <- paste(texto_base, ",", length(input$seccion), "secciones seleccionadas")
+        }
+      }
+      
+      texto_base
+    }
+    
     HTML(paste0(
       "<h4>Resumen general</h4>",
-      "<p>El padrón electoral totaliza <strong>", format(resumen$total_padron, big.mark = ","), " ciudadanos</strong>. ",
-      "De estos, <strong>", format(resumen$total_lista, big.mark = ","), " están incluidos en la lista nominal</strong>, ",
-      "lo que representa una <strong>tasa de inclusión del ", resumen$tasa_inclusion_promedio, "%</strong>.</p>",
+      "<p>El padrón electoral ", filtro_geo, " totaliza <strong>", 
+      format(resumen$total_padron, big.mark = ","), " ciudadanos</strong>. ",
+      "De estos, <strong>", format(resumen$total_lista, big.mark = ","), 
+      " están incluidos en la lista nominal</strong>, ",
+      "lo que representa una <strong>tasa de inclusión del ", 
+      resumen$tasa_inclusion_promedio, "%</strong>.</p>",
       "<p>La diferencia de <strong>", format(diferencia, big.mark = ","), " ciudadanos</strong> ",
       "corresponde a personas que están en el padrón pero aún no cumplen con los requisitos para ser incluidos ",
       "en la lista nominal (por ejemplo, trámites pendientes o suspensiones de derechos políticos).</p>",

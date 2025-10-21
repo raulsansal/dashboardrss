@@ -319,7 +319,7 @@ lista_nominal_server <- function(id) {
       return(datos_lne)
     })
     
-    # ========== ACTUALIZAR FILTROS GEOGRÁFICOS ==========
+    # ========== ACTUALIZAR FILTROS GEOGRÁFICOS (CORREGIDO) ==========
     
     observeEvent(datos_columnas(), {
       datos <- datos_columnas()
@@ -327,50 +327,94 @@ lista_nominal_server <- function(id) {
       if (!is.null(datos) && is.list(datos)) {
         estados <- c("Nacional", datos$todos_estados)
         
+        # PRESERVAR selección actual si existe
+        current_estado <- isolate(input$entidad)
+        selected_estado <- if (!is.null(current_estado) && current_estado %in% estados) {
+          current_estado
+        } else {
+          "Nacional"
+        }
+        
         updateSelectInput(session, "entidad",
                           choices = estados,
-                          selected = isolate(input$entidad) %||% "Nacional")
+                          selected = selected_estado)
         
         message("🗺️ Estados actualizados: ", length(estados) - 1, " entidades")
       }
     }, priority = 50)
     
+    # CORREGIDO: PRESERVAR SELECCIÓN DE DISTRITO
     observeEvent(list(datos_columnas(), input$entidad), {
       req(input$entidad)
       datos <- datos_columnas()
       
       if (!is.null(datos) && is.list(datos) && input$entidad != "Nacional") {
         distritos <- c("Todos", datos$todos_distritos)
+        
+        # PRESERVAR selección actual si existe y es válida
+        current_distrito <- isolate(input$distrito)
+        selected_distrito <- if (!is.null(current_distrito) && current_distrito %in% distritos) {
+          current_distrito
+        } else {
+          "Todos"
+        }
+        
         updateSelectInput(session, "distrito",
                           choices = distritos,
-                          selected = "Todos")
-        message("🗺️ Distritos: ", length(distritos) - 1)
+                          selected = selected_distrito)
+        
+        message("🗺️ Distritos actualizados: ", length(distritos) - 1, " - Seleccionado: ", selected_distrito)
       }
     }, priority = 40)
     
+    # CORREGIDO: PRESERVAR SELECCIÓN DE MUNICIPIO
     observeEvent(list(datos_columnas(), input$distrito), {
       req(input$distrito)
       datos <- datos_columnas()
       
       if (!is.null(datos) && is.list(datos)) {
         municipios <- c("Todos", datos$todos_municipios)
+        
+        # PRESERVAR selección actual si existe y es válida
+        current_municipio <- isolate(input$municipio)
+        selected_municipio <- if (!is.null(current_municipio) && current_municipio %in% municipios) {
+          current_municipio
+        } else {
+          "Todos"
+        }
+        
         updateSelectInput(session, "municipio",
                           choices = municipios,
-                          selected = "Todos")
-        message("🗺️ Municipios: ", length(municipios) - 1)
+                          selected = selected_municipio)
+        
+        message("🗺️ Municipios actualizados: ", length(municipios) - 1, " - Seleccionado: ", selected_municipio)
       }
     }, priority = 30)
     
+    # CORREGIDO: PRESERVAR SELECCIÓN DE SECCIONES
     observeEvent(list(datos_columnas(), input$municipio), {
       req(input$municipio)
       datos <- datos_columnas()
       
       if (!is.null(datos) && is.list(datos)) {
         secciones <- c("Todas", datos$todas_secciones)
+        
+        # PRESERVAR selección actual si existe y es válida
+        current_seccion <- isolate(input$seccion)
+        
+        # Validar que las secciones actuales sigan siendo válidas
+        if (!is.null(current_seccion) && length(current_seccion) > 0) {
+          valid_secciones <- current_seccion[current_seccion %in% secciones]
+          selected_seccion <- if (length(valid_secciones) > 0) valid_secciones else "Todas"
+        } else {
+          selected_seccion <- "Todas"
+        }
+        
         updateSelectInput(session, "seccion",
                           choices = secciones,
-                          selected = "Todas")
-        message("🗺️ Secciones: ", length(secciones) - 1)
+                          selected = selected_seccion)
+        
+        message("🗺️ Secciones actualizadas: ", length(secciones) - 1, " - Seleccionadas: ", paste(selected_seccion, collapse = ", "))
       }
     }, priority = 20)
     
@@ -381,6 +425,13 @@ lista_nominal_server <- function(id) {
       lista_nominal_server_main(input, output, session, datos_columnas, combinacion_valida)
     } else {
       message("⚠️ No se encontró lista_nominal_server_main.R")
+    }
+    
+    if (file.exists("modules/lista_nominal_server_graficas.R")) {
+      source("modules/lista_nominal_server_graficas.R", local = TRUE)
+      lista_nominal_server_graficas(input, output, session, datos_columnas, combinacion_valida)
+    } else {
+      message("⚠️ No se encontró lista_nominal_server_graficas.R")
     }
     
     if (file.exists("modules/lista_nominal_server_text_analysis.R")) {
