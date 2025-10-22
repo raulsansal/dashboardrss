@@ -343,33 +343,37 @@ lista_nominal_server <- function(id) {
       }
     }, priority = 50)
     
-    # CORREGIDO: PRESERVAR SELECCIÓN DE DISTRITO
-    observeEvent(list(datos_columnas(), input$entidad), {
+    # ========== CORREGIDO: PRESERVAR SELECCIÓN DE DISTRITO ==========
+    observeEvent(input$entidad, {
       req(input$entidad)
-      datos <- datos_columnas()
       
-      if (!is.null(datos) && is.list(datos) && input$entidad != "Nacional") {
-        distritos <- c("Todos", datos$todos_distritos)
+      if (input$entidad != "Nacional") {
+        datos <- datos_columnas()
         
-        # PRESERVAR selección actual si existe y es válida
-        current_distrito <- isolate(input$distrito)
-        selected_distrito <- if (!is.null(current_distrito) && current_distrito %in% distritos) {
-          current_distrito
-        } else {
-          "Todos"
+        if (!is.null(datos) && is.list(datos)) {
+          distritos <- c("Todos", datos$todos_distritos)
+          
+          # PRESERVAR selección actual si existe y es válida
+          current_distrito <- isolate(input$distrito)
+          selected_distrito <- if (!is.null(current_distrito) && current_distrito %in% distritos) {
+            current_distrito
+          } else {
+            "Todos"
+          }
+          
+          updateSelectInput(session, "distrito",
+                            choices = distritos,
+                            selected = selected_distrito)
+          
+          message("🗺️ Distritos actualizados: ", length(distritos) - 1, " - Seleccionado: ", selected_distrito)
         }
-        
-        updateSelectInput(session, "distrito",
-                          choices = distritos,
-                          selected = selected_distrito)
-        
-        message("🗺️ Distritos actualizados: ", length(distritos) - 1, " - Seleccionado: ", selected_distrito)
       }
-    }, priority = 40)
+    }, priority = 40, ignoreInit = TRUE)
     
-    # CORREGIDO: PRESERVAR SELECCIÓN DE MUNICIPIO
-    observeEvent(list(datos_columnas(), input$distrito), {
+    # ========== CORREGIDO: PRESERVAR SELECCIÓN DE MUNICIPIO ==========
+    observeEvent(input$distrito, {
       req(input$distrito)
+      
       datos <- datos_columnas()
       
       if (!is.null(datos) && is.list(datos)) {
@@ -389,12 +393,14 @@ lista_nominal_server <- function(id) {
         
         message("🗺️ Municipios actualizados: ", length(municipios) - 1, " - Seleccionado: ", selected_municipio)
       }
-    }, priority = 30)
+    }, priority = 30, ignoreInit = TRUE)
     
-    # CORREGIDO: PRESERVAR SELECCIÓN DE SECCIONES
-    observeEvent(list(datos_columnas(), input$municipio), {
+    # ========== CORREGIDO: PRESERVAR SELECCIÓN DE SECCIONES (SIN datos_columnas EN TRIGGER) ==========
+    observeEvent(input$municipio, {
       req(input$municipio)
-      datos <- datos_columnas()
+      
+      # OBTENER secciones disponibles de forma aislada
+      datos <- isolate(datos_columnas())
       
       if (!is.null(datos) && is.list(datos)) {
         secciones <- c("Todas", datos$todas_secciones)
@@ -402,21 +408,67 @@ lista_nominal_server <- function(id) {
         # PRESERVAR selección actual si existe y es válida
         current_seccion <- isolate(input$seccion)
         
-        # Validar que las secciones actuales sigan siendo válidas
+        # Manejar selección múltiple correctamente
         if (!is.null(current_seccion) && length(current_seccion) > 0) {
-          valid_secciones <- current_seccion[current_seccion %in% secciones]
-          selected_seccion <- if (length(valid_secciones) > 0) valid_secciones else "Todas"
+          # Si "Todas" está en la selección actual, mantener solo "Todas"
+          if ("Todas" %in% current_seccion) {
+            selected_seccion <- "Todas"
+          } else {
+            # Validar que las secciones actuales sigan siendo válidas
+            valid_secciones <- current_seccion[current_seccion %in% secciones]
+            selected_seccion <- if (length(valid_secciones) > 0) valid_secciones else "Todas"
+          }
         } else {
           selected_seccion <- "Todas"
         }
         
-        updateSelectInput(session, "seccion",
-                          choices = secciones,
-                          selected = selected_seccion)
+        # CAMBIO CRÍTICO: updateSelectInput → updateSelectizeInput
+        updateSelectizeInput(session, "seccion",
+                             choices = secciones,
+                             selected = selected_seccion,
+                             options = list(
+                               placeholder = "Selecciona una o más secciones",
+                               plugins = list("remove_button"),
+                               maxItems = NULL
+                             ))
         
         message("🗺️ Secciones actualizadas: ", length(secciones) - 1, " - Seleccionadas: ", paste(selected_seccion, collapse = ", "))
       }
-    }, priority = 20)
+    }, priority = 20, ignoreInit = TRUE)
+    
+    # ========== NUEVO: MANEJAR SELECCIÓN DE "TODAS" ==========
+    observeEvent(input$seccion, {
+      req(input$seccion)
+      
+      # Si el usuario selecciona "Todas" junto con otras secciones, mantener solo "Todas"
+      if (length(input$seccion) > 1 && "Todas" %in% input$seccion) {
+        updateSelectizeInput(session, "seccion", 
+                             selected = "Todas",
+                             options = list(
+                               placeholder = "Selecciona una o más secciones",
+                               plugins = list("remove_button"),
+                               maxItems = NULL
+                             ))
+        message("🗺️ Usuario seleccionó 'Todas' - limpiando otras selecciones")
+      }
+    }, priority = 10, ignoreInit = TRUE)
+    
+    # ========== NUEVO: MANEJAR SELECCIÓN DE "TODAS" ==========
+    observeEvent(input$seccion, {
+      req(input$seccion)
+      
+      # Si el usuario selecciona "Todas" junto con otras secciones, mantener solo "Todas"
+      if (length(input$seccion) > 1 && "Todas" %in% input$seccion) {
+        updateSelectizeInput(session, "seccion", 
+                             selected = "Todas",
+                             options = list(
+                               placeholder = "Selecciona una o más secciones",
+                               plugins = list("remove_button"),
+                               maxItems = NULL
+                             ))
+        message("🗺️ Usuario seleccionó 'Todas' - limpiando otras selecciones")
+      }
+    }, priority = 10, ignoreInit = TRUE)
     
     # ========== LLAMAR A SUBMÓDULOS ==========
     

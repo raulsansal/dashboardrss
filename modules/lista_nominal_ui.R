@@ -27,7 +27,20 @@ lista_nominal_ui <- function(id) {
           ns = ns,
           selectInput(ns("distrito"), "Distrito Electoral:", choices = c("Todos"), selected = "Todos"),
           selectInput(ns("municipio"), "Municipio:", choices = c("Todos"), selected = "Todos"),
-          selectInput(ns("seccion"), "Sección Electoral:", choices = c("Todas"), selected = "Todas", multiple = TRUE)
+          # ========== CORREGIDO: selectInput → selectizeInput ==========
+          selectizeInput(
+            ns("seccion"), 
+            "Sección Electoral:", 
+            choices = c("Todas"), 
+            selected = "Todas", 
+            multiple = TRUE,
+            options = list(
+              placeholder = "Selecciona una o más secciones",
+              plugins = list("remove_button"),
+              maxItems = NULL
+            )
+          )
+          # ========== FIN DE LA CORRECCIÓN ==========
         ),
         tags$hr(),
         # Selector de desglose SOLO para datos semanales
