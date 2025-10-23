@@ -34,13 +34,98 @@ generar_texto_alcance <- function(input) {
 
 lista_nominal_server_graficas <- function(input, output, session, datos_columnas, combinacion_valida) {
   
+  # ========== REACTIVE: OBTENER AÑO ACTUAL ==========
+  
+  anio_actual <- reactive({
+    as.integer(format(Sys.Date(), "%Y"))
+  })
+  
   # ========== REACTIVE: CARGAR DATOS HISTÓRICOS DEL AÑO SELECCIONADO ==========
   
   datos_historicos_year <- reactive({
+    # CARGA INICIAL: Cargar datos del año actual
+    if (input$btn_consultar == 0) {
+      message("🚀 [datos_historicos_year] CARGA INICIAL - Año actual: ", anio_actual())
+      
+      if (!exists("LNE_CATALOG", envir = .GlobalEnv)) {
+        return(NULL)
+      }
+      
+      catalog <- get("LNE_CATALOG", envir = .GlobalEnv)
+      
+      # Filtrar fechas del año actual
+      fechas_anio_actual <- catalog$historico[format(catalog$historico, "%Y") == anio_actual()]
+      
+      if (length(fechas_anio_actual) == 0) {
+        message("⚠️ [datos_historicos_year] Sin fechas para año actual")
+        return(NULL)
+      }
+      
+      message("📥 [datos_historicos_year] Cargando ", length(fechas_anio_actual), " fechas del año ", anio_actual())
+      
+      lista_datos <- list()
+      
+      for (i in seq_along(fechas_anio_actual)) {
+        fecha <- fechas_anio_actual[i]
+        
+        datos_temp <- tryCatch({
+          cargar_lne(
+            tipo_corte = "historico",
+            fecha = as.Date(fecha, origin = "1970-01-01"),
+            dimension = "completo",
+            estado = "Nacional",
+            distrito = "Todos",
+            municipio = "Todos",
+            seccion = "Todas",
+            incluir_extranjero = TRUE
+          )
+        }, error = function(e) {
+          message("⚠️ Error cargando fecha ", fecha, ": ", e$message)
+          return(NULL)
+        })
+        
+        if (!is.null(datos_temp) && !is.null(datos_temp$datos) && nrow(datos_temp$datos) > 0) {
+          df <- datos_temp$datos
+          
+          totales <- data.frame(
+            fecha = as.Date(fecha, origin = "1970-01-01"),
+            padron_electoral = sum(df$padron_electoral, na.rm = TRUE),
+            lista_nominal = sum(df$lista_nominal, na.rm = TRUE),
+            padron_hombres = if ("padron_hombres" %in% colnames(df)) sum(df$padron_hombres, na.rm = TRUE) else NA,
+            padron_mujeres = if ("padron_mujeres" %in% colnames(df)) sum(df$padron_mujeres, na.rm = TRUE) else NA,
+            lista_hombres = if ("lista_hombres" %in% colnames(df)) sum(df$lista_hombres, na.rm = TRUE) else NA,
+            lista_mujeres = if ("lista_mujeres" %in% colnames(df)) sum(df$lista_mujeres, na.rm = TRUE) else NA,
+            stringsAsFactors = FALSE
+          )
+          
+          lista_datos[[length(lista_datos) + 1]] <- totales
+        }
+      }
+      
+      if (length(lista_datos) == 0) {
+        return(NULL)
+      }
+      
+      datos_completos <- do.call(rbind, lista_datos)
+      datos_completos <- datos_completos[order(datos_completos$fecha), ]
+      
+      message("✅ [datos_historicos_year] CARGA INICIAL: ", nrow(datos_completos), " registros del año ", anio_actual())
+      return(datos_completos)
+    }
+    
+    # CARGA PERSONALIZADA: depende del botón
+    req(input$btn_consultar > 0)
     req(input$tipo_corte == "historico")
     req(input$year)
     
-    message("🔄 Cargando datos históricos del año ", input$year, "...")
+    # Aislar inputs
+    year <- isolate(input$year)
+    entidad <- isolate(input$entidad)
+    distrito <- isolate(input$distrito %||% "Todos")
+    municipio <- isolate(input$municipio %||% "Todos")
+    seccion <- isolate(input$seccion %||% "Todas")
+    
+    message("🔄 [datos_historicos_year] CONSULTA PERSONALIZADA - Año ", year, ", Entidad: ", entidad)
     
     if (!exists("LNE_CATALOG", envir = .GlobalEnv)) {
       return(NULL)
@@ -48,22 +133,16 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     
     catalog <- get("LNE_CATALOG", envir = .GlobalEnv)
     
-    # SOLO cargar fechas del año seleccionado
-    fechas_year <- catalog$historico[format(catalog$historico, "%Y") == input$year]
+    # Cargar fechas del año seleccionado
+    fechas_year <- catalog$historico[format(catalog$historico, "%Y") == year]
     
     if (length(fechas_year) == 0) {
       return(NULL)
     }
     
-    # Obtener filtros geográficos usando isolate() para evitar invalidaciones innecesarias
-    estado_filtro <- isolate(if (input$entidad == "Nacional") "Nacional" else input$entidad)
-    distrito_filtro <- isolate(input$distrito %||% "Todos")
-    municipio_filtro <- isolate(input$municipio %||% "Todos")
-    seccion_filtro <- isolate(input$seccion %||% "Todas")
+    estado_filtro <- if (entidad == "Nacional") "Nacional" else entidad
     
-    message("📥 Cargando ", length(fechas_year), " fechas del año ", input$year, "...")
-    message("📍 Filtros: Estado=", estado_filtro, ", Distrito=", distrito_filtro, 
-            ", Municipio=", municipio_filtro)
+    message("📥 Cargando ", length(fechas_year), " fechas del año ", year, "...")
     
     lista_datos <- list()
     
@@ -76,9 +155,9 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           fecha = as.Date(fecha, origin = "1970-01-01"),
           dimension = "completo",
           estado = estado_filtro,
-          distrito = distrito_filtro,
-          municipio = municipio_filtro,
-          seccion = seccion_filtro,
+          distrito = distrito,
+          municipio = municipio,
+          seccion = seccion,
           incluir_extranjero = TRUE
         )
       }, error = function(e) {
@@ -105,18 +184,151 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     }
     
     if (length(lista_datos) == 0) {
-      message("⚠️ No se pudo cargar ningún dato para el año ", input$year)
       return(NULL)
     }
     
     datos_completos <- do.call(rbind, lista_datos)
     datos_completos <- datos_completos[order(datos_completos$fecha), ]
     
-    message("✅ Datos del año ", input$year, " cargados: ", nrow(datos_completos), " registros")
+    message("✅ Datos del año ", year, " cargados: ", nrow(datos_completos), " registros")
     
     return(datos_completos)
   }) %>% 
-    bindCache(input$tipo_corte, input$year, input$entidad, input$distrito, input$municipio, input$seccion)
+    bindCache(input$btn_consultar, input$tipo_corte, input$year, input$entidad, 
+              input$distrito, input$municipio, input$seccion)
+  
+  # ========== REACTIVE: DATOS ANUALES (2017-HASTA AÑO ACTUAL) ==========
+  
+  datos_anuales_completos <- reactive({
+    # CARGA INICIAL: Cargar evolución anual completa hasta año actual
+    if (input$btn_consultar == 0) {
+      message("🚀 [datos_anuales_completos] CARGA INICIAL - Evolución 2017 hasta ", anio_actual())
+      
+      if (!exists("LNE_CATALOG", envir = .GlobalEnv)) {
+        return(NULL)
+      }
+      
+      catalog <- get("LNE_CATALOG", envir = .GlobalEnv)
+      años <- 2017:anio_actual()
+      
+      lista_anuales <- list()
+      
+      for (año in años) {
+        fechas_año <- catalog$historico[format(catalog$historico, "%Y") == año]
+        if (length(fechas_año) > 0) {
+          ultima_fecha <- max(fechas_año)
+          
+          datos_temp <- tryCatch({
+            cargar_lne(
+              tipo_corte = "historico",
+              fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
+              dimension = "completo",
+              estado = "Nacional",
+              distrito = "Todos",
+              municipio = "Todos",
+              seccion = "Todas",
+              incluir_extranjero = TRUE
+            )
+          }, error = function(e) NULL)
+          
+          if (!is.null(datos_temp) && !is.null(datos_temp$datos) && nrow(datos_temp$datos) > 0) {
+            df <- datos_temp$datos
+            lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
+              año = as.character(año),
+              fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
+              padron_electoral = sum(df$padron_electoral, na.rm = TRUE),
+              lista_nominal = sum(df$lista_nominal, na.rm = TRUE),
+              padron_hombres = if ("padron_hombres" %in% colnames(df)) sum(df$padron_hombres, na.rm = TRUE) else NA,
+              padron_mujeres = if ("padron_mujeres" %in% colnames(df)) sum(df$padron_mujeres, na.rm = TRUE) else NA,
+              lista_hombres = if ("lista_hombres" %in% colnames(df)) sum(df$lista_hombres, na.rm = TRUE) else NA,
+              lista_mujeres = if ("lista_mujeres" %in% colnames(df)) sum(df$lista_mujeres, na.rm = TRUE) else NA,
+              stringsAsFactors = FALSE
+            )
+          }
+        }
+      }
+      
+      if (length(lista_anuales) == 0) {
+        return(NULL)
+      }
+      
+      datos_completos <- do.call(rbind, lista_anuales)
+      
+      message("✅ [datos_anuales_completos] CARGA INICIAL: ", nrow(datos_completos), " años cargados")
+      
+      return(datos_completos)
+    }
+    
+    # CARGA PERSONALIZADA: Solo cuando usuario presiona botón
+    req(input$btn_consultar > 0)
+    req(input$tipo_corte == "historico")
+    
+    # Aislar inputs
+    entidad <- isolate(input$entidad)
+    distrito <- isolate(input$distrito %||% "Todos")
+    municipio <- isolate(input$municipio %||% "Todos")
+    seccion <- isolate(input$seccion %||% "Todas")
+    
+    message("🔄 [datos_anuales_completos] CONSULTA PERSONALIZADA - Entidad: ", entidad)
+    
+    if (!exists("LNE_CATALOG", envir = .GlobalEnv)) {
+      return(NULL)
+    }
+    
+    catalog <- get("LNE_CATALOG", envir = .GlobalEnv)
+    años <- 2017:anio_actual()
+    
+    lista_anuales <- list()
+    
+    estado_filtro <- if (entidad == "Nacional") "Nacional" else entidad
+    
+    for (año in años) {
+      fechas_año <- catalog$historico[format(catalog$historico, "%Y") == año]
+      if (length(fechas_año) > 0) {
+        ultima_fecha <- max(fechas_año)
+        
+        datos_temp <- tryCatch({
+          cargar_lne(
+            tipo_corte = "historico",
+            fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
+            dimension = "completo",
+            estado = estado_filtro,
+            distrito = distrito,
+            municipio = municipio,
+            seccion = seccion,
+            incluir_extranjero = TRUE
+          )
+        }, error = function(e) NULL)
+        
+        if (!is.null(datos_temp) && !is.null(datos_temp$datos) && nrow(datos_temp$datos) > 0) {
+          df <- datos_temp$datos
+          lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
+            año = as.character(año),
+            fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
+            padron_electoral = sum(df$padron_electoral, na.rm = TRUE),
+            lista_nominal = sum(df$lista_nominal, na.rm = TRUE),
+            padron_hombres = if ("padron_hombres" %in% colnames(df)) sum(df$padron_hombres, na.rm = TRUE) else NA,
+            padron_mujeres = if ("padron_mujeres" %in% colnames(df)) sum(df$padron_mujeres, na.rm = TRUE) else NA,
+            lista_hombres = if ("lista_hombres" %in% colnames(df)) sum(df$lista_hombres, na.rm = TRUE) else NA,
+            lista_mujeres = if ("lista_mujeres" %in% colnames(df)) sum(df$lista_mujeres, na.rm = TRUE) else NA,
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+    }
+    
+    if (length(lista_anuales) == 0) {
+      return(NULL)
+    }
+    
+    datos_completos <- do.call(rbind, lista_anuales)
+    
+    message("✅ Datos anuales cargados: ", nrow(datos_completos), " años")
+    
+    return(datos_completos)
+  }) %>% 
+    bindCache(input$btn_consultar, input$tipo_corte, input$entidad, 
+              input$distrito, input$municipio, input$seccion)
   
   # ========== FUNCIÓN AUXILIAR: PROYECCIÓN CON TASA DE CRECIMIENTO ==========
   
@@ -165,13 +377,13 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
   
   # ========== GRÁFICAS PARA DATOS HISTÓRICOS ==========
   
-  # ========== GRÁFICA 1: EVOLUCIÓN MENSUAL 2025 + PROYECCIÓN ==========
+  # ========== GRÁFICA 1: EVOLUCIÓN MENSUAL AÑO ACTUAL/SELECCIONADO + PROYECCIÓN ==========
   output$grafico_evolucion_2025 <- renderPlotly({
     req(input$tipo_corte == "historico")
     
     datos_completos <- datos_historicos_year()
     
-    if (is.null(datos_completos)) {
+    if (is.null(datos_completos) || nrow(datos_completos) == 0) {
       return(plot_ly() %>%
                layout(
                  xaxis = list(visible = FALSE),
@@ -188,34 +400,17 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                ))
     }
     
-    # Filtrar solo datos de 2025
-    datos_2025 <- datos_completos[format(datos_completos$fecha, "%Y") == "2025", ]
-    
-    if (nrow(datos_2025) == 0) {
-      return(plot_ly() %>%
-               layout(
-                 xaxis = list(visible = FALSE),
-                 yaxis = list(visible = FALSE),
-                 annotations = list(
-                   list(
-                     text = "No hay datos de 2025 disponibles",
-                     xref = "paper", yref = "paper",
-                     x = 0.5, y = 0.5,
-                     showarrow = FALSE,
-                     font = list(size = 14, color = "#666")
-                   )
-                 )
-               ))
-    }
+    # Obtener año de los datos (puede ser año actual o año seleccionado)
+    year_datos <- format(datos_completos$fecha[1], "%Y")
     
     # Calcular meses restantes hasta diciembre
-    ultimo_mes <- as.numeric(format(max(datos_2025$fecha), "%m"))
+    ultimo_mes <- as.numeric(format(max(datos_completos$fecha), "%m"))
     meses_restantes <- 12 - ultimo_mes
     
     # Proyectar si hay meses pendientes
     proyeccion <- NULL
     if (meses_restantes > 0) {
-      proyeccion <- proyectar_con_tasa_crecimiento(datos_2025, meses_restantes)
+      proyeccion <- proyectar_con_tasa_crecimiento(datos_completos, meses_restantes)
     }
     
     # Crear gráfico base con datos reales
@@ -223,7 +418,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     
     # Línea Padrón Electoral (real)
     p <- p %>% add_trace(
-      data = datos_2025,
+      data = datos_completos,
       x = ~fecha,
       y = ~padron_electoral,
       type = 'scatter',
@@ -239,7 +434,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     
     # Línea Lista Nominal (real)
     p <- p %>% add_trace(
-      data = datos_2025,
+      data = datos_completos,
       x = ~fecha,
       y = ~lista_nominal,
       type = 'scatter',
@@ -289,7 +484,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     # Layout con alcance agregado
     p <- p %>% layout(
       title = list(
-        text = "Evolución Mensual 2025 - Padrón Electoral y Lista Nominal",
+        text = paste0("Evolución Mensual ", year_datos, " - Padrón Electoral y Lista Nominal"),
         font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
         x = 0.5,
         xanchor = "center"
@@ -339,16 +534,17 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       )
     )
     
-    message("✅ Gráfico 1: Evolución 2025 renderizado")
+    message("✅ Gráfico 1: Evolución ", year_datos, " renderizado")
     return(p)
   })
   
-  # ========== GRÁFICA 2: EVOLUCIÓN ANUAL (2017-2025) ==========
+  # ========== GRÁFICA 2: EVOLUCIÓN ANUAL (2017-AÑO ACTUAL) ==========
   output$grafico_evolucion_anual <- renderPlotly({
     req(input$tipo_corte == "historico")
     
-    # Cargar último mes de cada año (SOLO 9 archivos)
-    if (!exists("LNE_CATALOG", envir = .GlobalEnv)) {
+    datos_anuales <- datos_anuales_completos()
+    
+    if (is.null(datos_anuales) || nrow(datos_anuales) == 0) {
       return(plot_ly() %>%
                layout(
                  xaxis = list(visible = FALSE),
@@ -364,67 +560,6 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                  )
                ))
     }
-    
-    catalog <- get("LNE_CATALOG", envir = .GlobalEnv)
-    años <- 2017:2025
-    
-    lista_anuales <- list()
-    
-    # Obtener filtros actuales del usuario
-    estado_filtro <- if (input$entidad == "Nacional") "Nacional" else input$entidad
-    distrito_filtro <- input$distrito %||% "Todos"
-    municipio_filtro <- input$municipio %||% "Todos"
-    seccion_filtro <- input$seccion %||% "Todas"
-    
-    for (año in años) {
-      fechas_año <- catalog$historico[format(catalog$historico, "%Y") == año]
-      if (length(fechas_año) > 0) {
-        ultima_fecha <- max(fechas_año)
-        
-        datos_temp <- tryCatch({
-          cargar_lne(
-            tipo_corte = "historico",
-            fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-            dimension = "completo",
-            estado = estado_filtro,
-            distrito = distrito_filtro,
-            municipio = municipio_filtro,
-            seccion = seccion_filtro,
-            incluir_extranjero = TRUE
-          )
-        }, error = function(e) NULL)
-        
-        if (!is.null(datos_temp) && !is.null(datos_temp$datos) && nrow(datos_temp$datos) > 0) {
-          df <- datos_temp$datos
-          lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
-            año = as.character(año),
-            fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-            padron_electoral = sum(df$padron_electoral, na.rm = TRUE),
-            lista_nominal = sum(df$lista_nominal, na.rm = TRUE),
-            stringsAsFactors = FALSE
-          )
-        }
-      }
-    }
-    
-    if (length(lista_anuales) == 0) {
-      return(plot_ly() %>%
-               layout(
-                 xaxis = list(visible = FALSE),
-                 yaxis = list(visible = FALSE),
-                 annotations = list(
-                   list(
-                     text = "No hay datos disponibles",
-                     xref = "paper", yref = "paper",
-                     x = 0.5, y = 0.5,
-                     showarrow = FALSE,
-                     font = list(size = 14, color = "#666")
-                   )
-                 )
-               ))
-    }
-    
-    datos_anuales <- do.call(rbind, lista_anuales)
     
     # Crear gráfico
     p <- plot_ly()
@@ -461,10 +596,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       )
     )
     
-    # Layout con alcance y ajustes corregidos
+    # Layout con alcance
     p <- p %>% layout(
       title = list(
-        text = "Evolución Anual (2017-2025) - Padrón Electoral y Lista Nominal",
+        text = paste0("Evolución Anual (2017-", anio_actual(), ") - Padrón Electoral y Lista Nominal"),
         font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
         x = 0.5,
         xanchor = "center"
@@ -521,8 +656,9 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
   output$grafico_evolucion_anual_sexo <- renderPlotly({
     req(input$tipo_corte == "historico")
     
-    # Cargar último mes de cada año (2017-2025) con filtros geográficos
-    if (!exists("LNE_CATALOG", envir = .GlobalEnv)) {
+    datos_anuales <- datos_anuales_completos()
+    
+    if (is.null(datos_anuales) || nrow(datos_anuales) == 0) {
       return(plot_ly() %>%
                layout(
                  xaxis = list(visible = FALSE),
@@ -539,55 +675,8 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                ))
     }
     
-    catalog <- get("LNE_CATALOG", envir = .GlobalEnv)
-    años <- 2017:2025
-    
-    lista_anuales <- list()
-    
-    # Obtener filtros actuales del usuario
-    estado_filtro <- if (input$entidad == "Nacional") "Nacional" else input$entidad
-    distrito_filtro <- input$distrito %||% "Todos"
-    municipio_filtro <- input$municipio %||% "Todos"
-    seccion_filtro <- input$seccion %||% "Todas"
-    
-    for (año in años) {
-      fechas_año <- catalog$historico[format(catalog$historico, "%Y") == año]
-      if (length(fechas_año) > 0) {
-        ultima_fecha <- max(fechas_año)
-        
-        datos_temp <- tryCatch({
-          cargar_lne(
-            tipo_corte = "historico",
-            fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-            dimension = "completo",
-            estado = estado_filtro,
-            distrito = distrito_filtro,
-            municipio = municipio_filtro,
-            seccion = seccion_filtro,
-            incluir_extranjero = TRUE
-          )
-        }, error = function(e) NULL)
-        
-        if (!is.null(datos_temp) && !is.null(datos_temp$datos) && nrow(datos_temp$datos) > 0) {
-          df <- datos_temp$datos
-          
-          # Verificar que existan columnas de sexo
-          if (all(c("padron_hombres", "padron_mujeres", "lista_hombres", "lista_mujeres") %in% colnames(df))) {
-            lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
-              año = as.character(año),
-              fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-              padron_hombres = sum(df$padron_hombres, na.rm = TRUE),
-              padron_mujeres = sum(df$padron_mujeres, na.rm = TRUE),
-              lista_hombres = sum(df$lista_hombres, na.rm = TRUE),
-              lista_mujeres = sum(df$lista_mujeres, na.rm = TRUE),
-              stringsAsFactors = FALSE
-            )
-          }
-        }
-      }
-    }
-    
-    if (length(lista_anuales) == 0) {
+    # Verificar que existan columnas de sexo
+    if (!all(c("padron_hombres", "padron_mujeres", "lista_hombres", "lista_mujeres") %in% colnames(datos_anuales))) {
       return(plot_ly() %>%
                layout(
                  xaxis = list(visible = FALSE),
@@ -604,25 +693,22 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                ))
     }
     
-    datos_anuales <- do.call(rbind, lista_anuales)
-    
     # Crear gráfico
     p <- plot_ly()
     
     # Padrón Hombres
-    p <- p %>% add_trace(
-      data = datos_anuales,
-      x = ~año,
-      y = ~padron_hombres,
-      type = 'scatter',
-      mode = 'lines+markers',
-      name = 'Padrón Hombres',
-      line = list(color = '#4A90E2', width = 2.5),
-      marker = list(size = 8, color = '#4A90E2'),
-      hovertemplate = paste0(
-        '<b>%{x}</b><br>',
-        'Padrón H: %{y:,.0f}<extra></extra>'
-      )
+    p <- p %>% add_trace(data = datos_anuales,
+                         x = ~año,
+                         y = ~padron_hombres,
+                         type = 'scatter',
+                         mode = 'lines+markers',
+                         name = 'Padrón Hombres',
+                         line = list(color = '#4A90E2', width = 2.5),
+                         marker = list(size = 8, color = '#4A90E2'),
+                         hovertemplate = paste0(
+                           '<b>%{x}</b><br>',
+                           'Padrón H: %{y:,.0f}<extra></extra>'
+                         )
     )
     
     # Padrón Mujeres
@@ -673,10 +759,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       )
     )
     
-    # Layout con alcance y ajustes corregidos
+    # Layout con alcance
     p <- p %>% layout(
       title = list(
-        text = "Evolución Anual por Sexo (2017-2025)",
+        text = paste0("Evolución Anual por Sexo (2017-", anio_actual(), ")"),
         font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
         x = 0.5,
         xanchor = "center"
@@ -731,11 +817,11 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
   
   # ========== GRÁFICA 4: EVOLUCIÓN MENSUAL DEL AÑO SELECCIONADO ==========
   output$grafico_evolucion_year <- renderPlotly({
-    req(input$tipo_corte == "historico", input$year)
+    req(input$tipo_corte == "historico")
     
     datos_completos <- datos_historicos_year()
     
-    if (is.null(datos_completos)) {
+    if (is.null(datos_completos) || nrow(datos_completos) == 0) {
       return(plot_ly() %>%
                layout(
                  xaxis = list(visible = FALSE),
@@ -752,32 +838,15 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                ))
     }
     
-    # Filtrar datos del año seleccionado
-    datos_year <- datos_completos[format(datos_completos$fecha, "%Y") == input$year, ]
-    
-    if (nrow(datos_year) == 0) {
-      return(plot_ly() %>%
-               layout(
-                 xaxis = list(visible = FALSE),
-                 yaxis = list(visible = FALSE),
-                 annotations = list(
-                   list(
-                     text = paste0("No hay datos para el año ", input$year),
-                     xref = "paper", yref = "paper",
-                     x = 0.5, y = 0.5,
-                     showarrow = FALSE,
-                     font = list(size = 14, color = "#666")
-                   )
-                 )
-               ))
-    }
+    # Obtener año de los datos
+    year_datos <- format(datos_completos$fecha[1], "%Y")
     
     # Crear gráfico
     p <- plot_ly()
     
     # Línea Padrón Electoral
     p <- p %>% add_trace(
-      data = datos_year,
+      data = datos_completos,
       x = ~fecha,
       y = ~padron_electoral,
       type = 'scatter',
@@ -793,7 +862,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     
     # Línea Lista Nominal
     p <- p %>% add_trace(
-      data = datos_year,
+      data = datos_completos,
       x = ~fecha,
       y = ~lista_nominal,
       type = 'scatter',
@@ -807,10 +876,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       )
     )
     
-    # Layout con alcance y ajustes corregidos
+    # Layout con alcance
     p <- p %>% layout(
       title = list(
-        text = paste0("Evolución Mensual ", input$year, " - Padrón Electoral y Lista Nominal"),
+        text = paste0("Evolución Mensual ", year_datos, " - Padrón Electoral y Lista Nominal"),
         font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
         x = 0.5,
         xanchor = "center"
@@ -860,17 +929,17 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       )
     )
     
-    message("✅ Gráfico 4: Evolución mensual del año ", input$year, " renderizado")
+    message("✅ Gráfico 4: Evolución mensual del año ", year_datos, " renderizado")
     return(p)
   })
   
   # ========== GRÁFICA 5: EVOLUCIÓN MENSUAL DEL AÑO SELECCIONADO + SEXO ==========
   output$grafico_evolucion_year_sexo <- renderPlotly({
-    req(input$tipo_corte == "historico", input$year)
+    req(input$tipo_corte == "historico")
     
     datos_completos <- datos_historicos_year()
     
-    if (is.null(datos_completos)) {
+    if (is.null(datos_completos) || nrow(datos_completos) == 0) {
       return(plot_ly() %>%
                layout(
                  xaxis = list(visible = FALSE),
@@ -905,32 +974,15 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                ))
     }
     
-    # Filtrar datos del año seleccionado
-    datos_year <- datos_completos[format(datos_completos$fecha, "%Y") == input$year, ]
-    
-    if (nrow(datos_year) == 0) {
-      return(plot_ly() %>%
-               layout(
-                 xaxis = list(visible = FALSE),
-                 yaxis = list(visible = FALSE),
-                 annotations = list(
-                   list(
-                     text = paste0("No hay datos para el año ", input$year),
-                     xref = "paper", yref = "paper",
-                     x = 0.5, y = 0.5,
-                     showarrow = FALSE,
-                     font = list(size = 14, color = "#666")
-                   )
-                 )
-               ))
-    }
+    # Obtener año de los datos
+    year_datos <- format(datos_completos$fecha[1], "%Y")
     
     # Crear gráfico
     p <- plot_ly()
     
     # Padrón Hombres
     p <- p %>% add_trace(
-      data = datos_year,
+      data = datos_completos,
       x = ~fecha,
       y = ~padron_hombres,
       type = 'scatter',
@@ -946,7 +998,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     
     # Padrón Mujeres
     p <- p %>% add_trace(
-      data = datos_year,
+      data = datos_completos,
       x = ~fecha,
       y = ~padron_mujeres,
       type = 'scatter',
@@ -962,7 +1014,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     
     # Lista Hombres
     p <- p %>% add_trace(
-      data = datos_year,
+      data = datos_completos,
       x = ~fecha,
       y = ~lista_hombres,
       type = 'scatter',
@@ -978,7 +1030,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     
     # Lista Mujeres
     p <- p %>% add_trace(
-      data = datos_year,
+      data = datos_completos,
       x = ~fecha,
       y = ~lista_mujeres,
       type = 'scatter',
@@ -992,10 +1044,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       )
     )
     
-    # Layout con alcance y ajustes corregidos
+    # Layout con alcance
     p <- p %>% layout(
       title = list(
-        text = paste0("Evolución Mensual ", input$year, " por Sexo"),
+        text = paste0("Evolución Mensual ", year_datos, " por Sexo"),
         font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
         x = 0.5,
         xanchor = "center"
@@ -1045,7 +1097,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       )
     )
     
-    message("✅ Gráfico 5: Evolución mensual ", input$year, " por sexo renderizado")
+    message("✅ Gráfico 5: Evolución mensual ", year_datos, " por sexo renderizado")
     return(p)
   })
   
@@ -1059,6 +1111,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
   output$`main-grafico_barras` <- renderPlotly({
     req(input$tipo_corte == "semanal")
     req(combinacion_valida())
+    
     datos <- datos_columnas()
     
     if (is.null(datos) || is.null(datos$datos) || nrow(datos$datos) == 0) {
@@ -1081,7 +1134,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     }
     
     df <- datos$datos
-    desglose_actual <- input$desglose %||% "Sexo"
+    desglose_actual <- isolate(input$desglose) %||% "Sexo"
     
     message("📊 Renderizando gráfico semanal: ", desglose_actual)
     
@@ -1095,9 +1148,6 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         padron_m <- sum(df$padron_mujeres, na.rm = TRUE)
         lista_h <- sum(df$lista_hombres, na.rm = TRUE)
         lista_m <- sum(df$lista_mujeres, na.rm = TRUE)
-        
-        message("📊 Padrón H: ", format(padron_h, big.mark = ","), " | M: ", format(padron_m, big.mark = ","))
-        message("📊 Lista H: ", format(lista_h, big.mark = ","), " | M: ", format(lista_m, big.mark = ","))
         
         datos_grafico <- data.frame(
           Categoria = rep(c("Hombres", "Mujeres"), 2),
@@ -1130,12 +1180,9 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             annotations = list(
               list(
                 text = generar_texto_alcance(input),
-                x = 0.5,
-                y = 1.12,
-                xref = "paper",
-                yref = "paper",
-                xanchor = "center",
-                yanchor = "top",
+                x = 0.5, y = 1.12,
+                xref = "paper", yref = "paper",
+                xanchor = "center", yanchor = "top",
                 showarrow = FALSE,
                 font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
                 align = "center"
@@ -1154,76 +1201,54 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         
       } else {
         # SIN DESGLOSE - MOSTRAR TOTALES
-        if (all(c("padron_electoral", "lista_nominal") %in% colnames(df))) {
-          
-          total_padron <- sum(df$padron_electoral, na.rm = TRUE)
-          total_lista <- sum(df$lista_nominal, na.rm = TRUE)
-          
-          datos_grafico <- data.frame(
-            Tipo = c("Padrón Electoral", "Lista Nominal"),
-            Cantidad = c(total_padron, total_lista),
-            stringsAsFactors = FALSE
-          )
-          
-          p <- plot_ly(
-            data = datos_grafico,
-            x = ~Tipo,
-            y = ~Cantidad,
-            type = 'bar',
-            marker = list(color = c("#44559B", "#C0311A")),
-            text = ~paste0(format(Cantidad, big.mark = ","), " electores"),
-            hovertemplate = '<b>%{x}</b><br>%{text}<extra></extra>'
-          ) %>%
-            layout(
-              title = list(
-                text = "Padrón Electoral y Lista Nominal",
-                font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
-                x = 0.5, xanchor = "center"
+        total_padron <- sum(df$padron_electoral, na.rm = TRUE)
+        total_lista <- sum(df$lista_nominal, na.rm = TRUE)
+        
+        datos_grafico <- data.frame(
+          Tipo = c("Padrón Electoral", "Lista Nominal"),
+          Cantidad = c(total_padron, total_lista),
+          stringsAsFactors = FALSE
+        )
+        
+        p <- plot_ly(
+          data = datos_grafico,
+          x = ~Tipo,
+          y = ~Cantidad,
+          type = 'bar',
+          marker = list(color = c("#44559B", "#C0311A")),
+          text = ~paste0(format(Cantidad, big.mark = ","), " electores"),
+          hovertemplate = '<b>%{x}</b><br>%{text}<extra></extra>'
+        ) %>%
+          layout(
+            title = list(
+              text = "Padrón Electoral y Lista Nominal",
+              font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
+              x = 0.5, xanchor = "center"
+            ),
+            xaxis = list(title = ""),
+            yaxis = list(title = "Número de Electores", separatethousands = TRUE),
+            margin = list(t = 120, b = 100, l = 80, r = 50),
+            annotations = list(
+              list(
+                text = generar_texto_alcance(input),
+                x = 0.5, y = 1.12,
+                xref = "paper", yref = "paper",
+                xanchor = "center", yanchor = "top",
+                showarrow = FALSE,
+                font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
+                align = "center"
               ),
-              xaxis = list(title = ""),
-              yaxis = list(title = "Número de Electores", separatethousands = TRUE),
-              margin = list(t = 120, b = 100, l = 80, r = 50),
-              annotations = list(
-                list(
-                  text = generar_texto_alcance(input),
-                  x = 0.5,
-                  y = 1.12,
-                  xref = "paper",
-                  yref = "paper",
-                  xanchor = "center",
-                  yanchor = "top",
-                  showarrow = FALSE,
-                  font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
-                  align = "center"
-                ),
-                list(
-                  text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-                  x = 0.0, y = -0.20,
-                  xref = "paper", yref = "paper",
-                  xanchor = "left", yanchor = "top",
-                  showarrow = FALSE,
-                  font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
-                  align = "left"
-                )
+              list(
+                text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+                x = 0.0, y = -0.20,
+                xref = "paper", yref = "paper",
+                xanchor = "left", yanchor = "top",
+                showarrow = FALSE,
+                font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
+                align = "left"
               )
             )
-          
-        } else {
-          p <- plot_ly() %>%
-            layout(
-              xaxis = list(visible = FALSE),
-              yaxis = list(visible = FALSE),
-              annotations = list(
-                list(
-                  text = "Datos no disponibles para este corte",
-                  xref = "paper", yref = "paper",
-                  x = 0.5, y = 0.5,
-                  showarrow = FALSE,
-                  font = list(size = 14, color = "#666")
-                )
-              )
-            )
-        }
+          )
       }
       
     } else if (desglose_actual == "Rango de Edad") {
@@ -1293,24 +1318,18 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             annotations = list(
               list(
                 text = generar_texto_alcance(input),
-                x = 0.5,
-                y = 1.12,
-                xref = "paper",
-                yref = "paper",
-                xanchor = "center",
-                yanchor = "top",
+                x = 0.5, y = 1.12,
+                xref = "paper", yref = "paper",
+                xanchor = "center", yanchor = "top",
                 showarrow = FALSE,
                 font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
                 align = "center"
               ),
               list(
                 text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-                x = 0.0,
-                y = -0.25,
-                xref = "paper",
-                yref = "paper",
-                xanchor = "left",
-                yanchor = "top",
+                x = 0.0, y = -0.25,
+                xref = "paper", yref = "paper",
+                xanchor = "left", yanchor = "top",
                 showarrow = FALSE,
                 font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
                 align = "left"
@@ -1326,10 +1345,8 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             annotations = list(
               list(
                 text = "Datos de edad no disponibles para este corte",
-                xref = "paper", 
-                yref = "paper",
-                x = 0.5, 
-                y = 0.5,
+                xref = "paper", yref = "paper",
+                x = 0.5, y = 0.5,
                 showarrow = FALSE,
                 font = list(size = 14, color = "#666")
               )
@@ -1380,24 +1397,18 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             annotations = list(
               list(
                 text = generar_texto_alcance(input),
-                x = 0.5,
-                y = 1.12,
-                xref = "paper",
-                yref = "paper",
-                xanchor = "center",
-                yanchor = "top",
+                x = 0.5, y = 1.12,
+                xref = "paper", yref = "paper",
+                xanchor = "center", yanchor = "top",
                 showarrow = FALSE,
                 font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
                 align = "center"
               ),
               list(
                 text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-                x = 0.0,
-                y = -0.20,
-                xref = "paper",
-                yref = "paper",
-                xanchor = "left",
-                yanchor = "top",
+                x = 0.0, y = -0.20,
+                xref = "paper", yref = "paper",
+                xanchor = "left", yanchor = "top",
                 showarrow = FALSE,
                 font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
                 align = "left"
@@ -1413,10 +1424,8 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             annotations = list(
               list(
                 text = "Datos de origen no disponibles para este corte",
-                xref = "paper", 
-                yref = "paper",
-                x = 0.5, 
-                y = 0.5,
+                xref = "paper", yref = "paper",
+                x = 0.5, y = 0.5,
                 showarrow = FALSE,
                 font = list(size = 14, color = "#666")
               )
@@ -1432,10 +1441,8 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           annotations = list(
             list(
               text = "Tipo de desglose no reconocido",
-              xref = "paper", 
-              yref = "paper",
-              x = 0.5, 
-              y = 0.5,
+              xref = "paper", yref = "paper",
+              x = 0.5, y = 0.5,
               showarrow = FALSE,
               font = list(size = 14, color = "#666")
             )
@@ -1447,10 +1454,13 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     return(p)
   })
   
+  # ========== GRÁFICO DE TASA DE INCLUSIÓN (SOLO SEMANALES)
+  
   # ========== GRÁFICO DE TASA DE INCLUSIÓN (SOLO SEMANALES) ==========
   output$`main-tasa_inclusion_plot` <- renderPlotly({
     req(input$tipo_corte == "semanal")
     req(combinacion_valida())
+    
     datos <- datos_columnas()
     
     if (is.null(datos) || is.null(datos$datos) || nrow(datos$datos) == 0) {
@@ -1553,4 +1563,3 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
   
   message("✅ Módulo lista_nominal_server_graficas inicializado")
 }
-  

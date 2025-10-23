@@ -212,9 +212,55 @@ lista_nominal_server <- function(id) {
       ))
     })
     
+    # ========== FUNCIÓN AUXILIAR: CARGA INICIAL RÁPIDA ==========
+    
+    cargar_datos_defecto <- function() {
+      message("🚀 [CARGA INICIAL] Cargando datos por defecto...")
+      
+      if (!exists("LNE_CATALOG", envir = .GlobalEnv)) {
+        return(NULL)
+      }
+      
+      catalog <- get("LNE_CATALOG", envir = .GlobalEnv)
+      
+      # Obtener última fecha histórica disponible
+      ultima_fecha <- max(catalog$historico)
+      
+      message("📅 [CARGA INICIAL] Última fecha: ", ultima_fecha)
+      
+      # Cargar SOLO 1 archivo: último mensual Nacional sin filtros
+      datos_lne <- tryCatch({
+        cargar_lne(
+          tipo_corte = "historico",
+          fecha = ultima_fecha,
+          dimension = "completo",
+          estado = "Nacional",
+          distrito = "Todos",
+          municipio = "Todos",
+          seccion = "Todas",
+          incluir_extranjero = TRUE
+        )
+      }, error = function(e) {
+        message("❌ [CARGA INICIAL] Error: ", e$message)
+        return(NULL)
+      })
+      
+      if (!is.null(datos_lne)) {
+        message("✅ [CARGA INICIAL] Datos cargados: ", nrow(datos_lne$datos), " filas")
+      }
+      
+      return(datos_lne)
+    }
+    
     # ========== REACTIVOS PRINCIPALES ==========
     
     combinacion_valida <- reactive({
+      # CARGA INICIAL: siempre válida
+      if (input$btn_consultar == 0) {
+        return(TRUE)
+      }
+      
+      # CARGA PERSONALIZADA: validar inputs
       req(input$tipo_corte, input$date)
       
       if (input$date == "" || input$date == "Sin datos") {
@@ -244,21 +290,37 @@ lista_nominal_server <- function(id) {
       return(TRUE)
     })
     
+    # ========== REACTIVE OPTIMIZADO: datos_columnas CON BOTÓN ==========
+    
     datos_columnas <- reactive({
-      message("🔍 [DATOS_COLUMNAS_LNE] tipo=", input$tipo_corte %||% "NULL", 
-              ", year=", input$year %||% "NULL", 
-              ", date=", input$date %||% "NULL", 
-              ", entidad=", input$entidad %||% "NULL")
+      # ========== CARGA INICIAL (SIN BOTÓN PRESIONADO) ==========
+      if (input$btn_consultar == 0) {
+        message("🚀 [DATOS_COLUMNAS] CARGA INICIAL - Sin botón presionado")
+        return(cargar_datos_defecto())
+      }
       
-      req(input$tipo_corte, input$year, input$date, input$entidad)
+      # ========== CARGA PERSONALIZADA (BOTÓN PRESIONADO) ==========
+      message("🔍 [DATOS_COLUMNAS] CARGA PERSONALIZADA - Botón presionado: ", input$btn_consultar)
       
-      if (input$date == "" || input$date == "Sin datos") {
+      # Aislar inputs para evitar reactividad no deseada
+      tipo_corte <- isolate(input$tipo_corte)
+      year <- isolate(input$year)
+      date <- isolate(input$date)
+      entidad <- isolate(input$entidad)
+      distrito <- isolate(input$distrito %||% "Todos")
+      municipio <- isolate(input$municipio %||% "Todos")
+      seccion <- isolate(input$seccion %||% "Todas")
+      desglose <- isolate(input$desglose %||% "Sexo")
+      
+      message("📊 Configuración: tipo=", tipo_corte, ", fecha=", date, ", entidad=", entidad)
+      
+      if (date == "" || date == "Sin datos") {
         message("❌ Fecha no válida")
         return(NULL)
       }
       
       fecha_seleccionada <- tryCatch({
-        as.Date(input$date)
+        as.Date(date)
       }, error = function(e) {
         message("❌ Error convirtiendo fecha: ", e$message)
         return(NULL)
@@ -269,13 +331,10 @@ lista_nominal_server <- function(id) {
         return(NULL)
       }
       
-      estado_filtro <- if (input$entidad == "Nacional") "Nacional" else input$entidad
-      distrito_filtro <- input$distrito %||% "Todos"
-      municipio_filtro <- input$municipio %||% "Todos"
-      seccion_filtro <- input$seccion %||% "Todas"
+      estado_filtro <- if (entidad == "Nacional") "Nacional" else entidad
       
-      dimension <- if (input$tipo_corte == "semanal") {
-        switch(input$desglose %||% "Sexo",
+      dimension <- if (tipo_corte == "semanal") {
+        switch(desglose,
                "Sexo" = "sexo",
                "Rango de Edad" = "edad",
                "Entidad de Origen" = "origen",
@@ -284,20 +343,18 @@ lista_nominal_server <- function(id) {
         "completo"
       }
       
-      message("📂 Llamando cargar_lne: tipo=", input$tipo_corte, 
-              ", fecha=", fecha_seleccionada, 
-              ", dimension=", dimension,
-              ", estado=", estado_filtro)
+      message("📂 Llamando cargar_lne: tipo=", tipo_corte, ", fecha=", fecha_seleccionada, 
+              ", dimension=", dimension, ", estado=", estado_filtro)
       
       datos_lne <- tryCatch({
         cargar_lne(
-          tipo_corte = input$tipo_corte,
+          tipo_corte = tipo_corte,
           fecha = fecha_seleccionada,
           dimension = dimension,
           estado = estado_filtro,
-          distrito = distrito_filtro,
-          municipio = municipio_filtro,
-          seccion = seccion_filtro,
+          distrito = distrito,
+          municipio = municipio,
+          seccion = seccion,
           incluir_extranjero = TRUE
         )
       }, error = function(e) {
@@ -317,9 +374,11 @@ lista_nominal_server <- function(id) {
       
       message("✅ Datos LNE cargados: ", nrow(datos_lne$datos), " filas")
       return(datos_lne)
-    })
+      
+    }) %>% bindCache(input$btn_consultar, input$tipo_corte, input$date, 
+                     input$entidad, input$distrito, input$municipio, input$seccion)
     
-    # ========== ACTUALIZAR FILTROS GEOGRÁFICOS (CORREGIDO) ==========
+    # ========== ACTUALIZAR FILTROS GEOGRÁFICOS (SIN DISPARAR CARGAS) ==========
     
     observeEvent(datos_columnas(), {
       datos <- datos_columnas()
@@ -343,7 +402,7 @@ lista_nominal_server <- function(id) {
       }
     }, priority = 50)
     
-    # ========== CORREGIDO: PRESERVAR SELECCIÓN DE DISTRITO ==========
+    # PRESERVAR SELECCIÓN DE DISTRITO
     observeEvent(input$entidad, {
       req(input$entidad)
       
@@ -353,7 +412,6 @@ lista_nominal_server <- function(id) {
         if (!is.null(datos) && is.list(datos)) {
           distritos <- c("Todos", datos$todos_distritos)
           
-          # PRESERVAR selección actual si existe y es válida
           current_distrito <- isolate(input$distrito)
           selected_distrito <- if (!is.null(current_distrito) && current_distrito %in% distritos) {
             current_distrito
@@ -370,7 +428,7 @@ lista_nominal_server <- function(id) {
       }
     }, priority = 40, ignoreInit = TRUE)
     
-    # ========== CORREGIDO: PRESERVAR SELECCIÓN DE MUNICIPIO ==========
+    # PRESERVAR SELECCIÓN DE MUNICIPIO
     observeEvent(input$distrito, {
       req(input$distrito)
       
@@ -379,7 +437,6 @@ lista_nominal_server <- function(id) {
       if (!is.null(datos) && is.list(datos)) {
         municipios <- c("Todos", datos$todos_municipios)
         
-        # PRESERVAR selección actual si existe y es válida
         current_municipio <- isolate(input$municipio)
         selected_municipio <- if (!is.null(current_municipio) && current_municipio %in% municipios) {
           current_municipio
@@ -395,26 +452,21 @@ lista_nominal_server <- function(id) {
       }
     }, priority = 30, ignoreInit = TRUE)
     
-    # ========== CORREGIDO: PRESERVAR SELECCIÓN DE SECCIONES (SIN datos_columnas EN TRIGGER) ==========
+    # PRESERVAR SELECCIÓN DE SECCIONES
     observeEvent(input$municipio, {
       req(input$municipio)
       
-      # OBTENER secciones disponibles de forma aislada
       datos <- isolate(datos_columnas())
       
       if (!is.null(datos) && is.list(datos)) {
         secciones <- c("Todas", datos$todas_secciones)
         
-        # PRESERVAR selección actual si existe y es válida
         current_seccion <- isolate(input$seccion)
         
-        # Manejar selección múltiple correctamente
         if (!is.null(current_seccion) && length(current_seccion) > 0) {
-          # Si "Todas" está en la selección actual, mantener solo "Todas"
           if ("Todas" %in% current_seccion) {
             selected_seccion <- "Todas"
           } else {
-            # Validar que las secciones actuales sigan siendo válidas
             valid_secciones <- current_seccion[current_seccion %in% secciones]
             selected_seccion <- if (length(valid_secciones) > 0) valid_secciones else "Todas"
           }
@@ -422,7 +474,6 @@ lista_nominal_server <- function(id) {
           selected_seccion <- "Todas"
         }
         
-        # CAMBIO CRÍTICO: updateSelectInput → updateSelectizeInput
         updateSelectizeInput(session, "seccion",
                              choices = secciones,
                              selected = selected_seccion,
@@ -436,28 +487,10 @@ lista_nominal_server <- function(id) {
       }
     }, priority = 20, ignoreInit = TRUE)
     
-    # ========== NUEVO: MANEJAR SELECCIÓN DE "TODAS" ==========
+    # MANEJAR SELECCIÓN DE "TODAS"
     observeEvent(input$seccion, {
       req(input$seccion)
       
-      # Si el usuario selecciona "Todas" junto con otras secciones, mantener solo "Todas"
-      if (length(input$seccion) > 1 && "Todas" %in% input$seccion) {
-        updateSelectizeInput(session, "seccion", 
-                             selected = "Todas",
-                             options = list(
-                               placeholder = "Selecciona una o más secciones",
-                               plugins = list("remove_button"),
-                               maxItems = NULL
-                             ))
-        message("🗺️ Usuario seleccionó 'Todas' - limpiando otras selecciones")
-      }
-    }, priority = 10, ignoreInit = TRUE)
-    
-    # ========== NUEVO: MANEJAR SELECCIÓN DE "TODAS" ==========
-    observeEvent(input$seccion, {
-      req(input$seccion)
-      
-      # Si el usuario selecciona "Todas" junto con otras secciones, mantener solo "Todas"
       if (length(input$seccion) > 1 && "Todas" %in% input$seccion) {
         updateSelectizeInput(session, "seccion", 
                              selected = "Todas",

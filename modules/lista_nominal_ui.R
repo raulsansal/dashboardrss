@@ -27,7 +27,6 @@ lista_nominal_ui <- function(id) {
           ns = ns,
           selectInput(ns("distrito"), "Distrito Electoral:", choices = c("Todos"), selected = "Todos"),
           selectInput(ns("municipio"), "Municipio:", choices = c("Todos"), selected = "Todos"),
-          # ========== CORREGIDO: selectInput → selectizeInput ==========
           selectizeInput(
             ns("seccion"), 
             "Sección Electoral:", 
@@ -40,7 +39,6 @@ lista_nominal_ui <- function(id) {
               maxItems = NULL
             )
           )
-          # ========== FIN DE LA CORRECCIÓN ==========
         ),
         tags$hr(),
         # Selector de desglose SOLO para datos semanales
@@ -50,6 +48,21 @@ lista_nominal_ui <- function(id) {
           uiOutput(ns("selector_desglose"))
         ),
         tags$hr(),
+        
+        # ========== NUEVO: BOTÓN CONSULTAR ==========
+        actionButton(
+          ns("btn_consultar"), 
+          "Consultar", 
+          icon = icon("search"),
+          class = "btn-success",
+          style = "width: 100%; margin-bottom: 10px; font-weight: bold; font-size: 16px;"
+        ),
+        tags$small(
+          style = "color: #666; display: block; margin-bottom: 10px; text-align: center;",
+          "Configura los filtros y presiona Consultar para actualizar"
+        ),
+        # ========== FIN BOTÓN CONSULTAR ==========
+        
         actionButton(ns("reset_config"), "Restablecer consulta", class = "btn-primary", style = "width: 100%; margin-bottom: 10px;"),
         downloadButton(ns("download_csv"), "Descargar CSV", class = "btn-primary")
       ),
@@ -57,7 +70,7 @@ lista_nominal_ui <- function(id) {
       mainPanel(
         width = 8,
         
-        # ========== GRÁFICAS PARA HISTÓRICOS (5 GRÁFICAS) ==========
+        # ========== GRÁFICAS PARA HISTÓRICOS (5 GRÁFICAS CON SPINNERS) ==========
         conditionalPanel(
           condition = "input.tipo_corte == 'historico'",
           ns = ns,
@@ -67,7 +80,12 @@ lista_nominal_ui <- function(id) {
             column(12, 
                    div(class = "plot-container",
                        style = "height: 450px; margin-bottom: 30px;",
-                       plotlyOutput(ns("grafico_evolucion_2025"), width = "100%", height = "450px")
+                       shinycssloaders::withSpinner(
+                         plotlyOutput(ns("grafico_evolucion_2025"), width = "100%", height = "450px"),
+                         type = 6,
+                         color = "#44559B",
+                         size = 1
+                       )
                    )
             )
           ),
@@ -77,7 +95,12 @@ lista_nominal_ui <- function(id) {
             column(12, 
                    div(class = "plot-container",
                        style = "height: 450px; margin-bottom: 30px;",
-                       plotlyOutput(ns("grafico_evolucion_anual"), width = "100%", height = "450px")
+                       shinycssloaders::withSpinner(
+                         plotlyOutput(ns("grafico_evolucion_anual"), width = "100%", height = "450px"),
+                         type = 6,
+                         color = "#44559B",
+                         size = 1
+                       )
                    )
             )
           ),
@@ -87,7 +110,12 @@ lista_nominal_ui <- function(id) {
             column(12, 
                    div(class = "plot-container",
                        style = "height: 450px; margin-bottom: 30px;",
-                       plotlyOutput(ns("grafico_evolucion_anual_sexo"), width = "100%", height = "450px")
+                       shinycssloaders::withSpinner(
+                         plotlyOutput(ns("grafico_evolucion_anual_sexo"), width = "100%", height = "450px"),
+                         type = 6,
+                         color = "#44559B",
+                         size = 1
+                       )
                    )
             )
           ),
@@ -97,7 +125,12 @@ lista_nominal_ui <- function(id) {
             column(12, 
                    div(class = "plot-container",
                        style = "height: 450px; margin-bottom: 30px;",
-                       plotlyOutput(ns("grafico_evolucion_year"), width = "100%", height = "450px")
+                       shinycssloaders::withSpinner(
+                         plotlyOutput(ns("grafico_evolucion_year"), width = "100%", height = "450px"),
+                         type = 6,
+                         color = "#44559B",
+                         size = 1
+                       )
                    )
             )
           ),
@@ -107,13 +140,18 @@ lista_nominal_ui <- function(id) {
             column(12, 
                    div(class = "plot-container",
                        style = "height: 450px; margin-bottom: 30px;",
-                       plotlyOutput(ns("grafico_evolucion_year_sexo"), width = "100%", height = "450px")
+                       shinycssloaders::withSpinner(
+                         plotlyOutput(ns("grafico_evolucion_year_sexo"), width = "100%", height = "450px"),
+                         type = 6,
+                         color = "#44559B",
+                         size = 1
+                       )
                    )
             )
           )
         ),
         
-        # ========== GRÁFICAS PARA SEMANALES (MANTENER LAS ACTUALES) ==========
+        # ========== GRÁFICAS PARA SEMANALES (CON SPINNERS) ==========
         conditionalPanel(
           condition = "input.tipo_corte == 'semanal'",
           ns = ns,
@@ -123,7 +161,12 @@ lista_nominal_ui <- function(id) {
             column(12, 
                    div(class = "plot-container",
                        style = "height: 450px;",
-                       uiOutput(ns("main-plot_container"))
+                       shinycssloaders::withSpinner(
+                         uiOutput(ns("main-plot_container")),
+                         type = 6,
+                         color = "#C0311A",
+                         size = 1
+                       )
                    )
             )
           ),
@@ -133,17 +176,27 @@ lista_nominal_ui <- function(id) {
             column(12,
                    div(class = "participacion-container",
                        style = "height: 500px; display: flex; flex-direction: column; align-items: center; justify-content: center;",
-                       plotlyOutput(ns("main-tasa_inclusion_plot"), width = "100%", height = "432px")
+                       shinycssloaders::withSpinner(
+                         plotlyOutput(ns("main-tasa_inclusion_plot"), width = "100%", height = "432px"),
+                         type = 6,
+                         color = "#4CAF50",
+                         size = 1
+                       )
                    )
             )
           )
         ),
         
-        # ========== DATATABLE (COMÚN PARA AMBOS TIPOS) ==========
+        # ========== DATATABLE (CON SPINNER) ==========
         fluidRow(
           column(12, 
                  h3("Data Table", align = "center", style = "margin-top: 40px;"),
-                 DTOutput(ns("main-table_data"))
+                 shinycssloaders::withSpinner(
+                   DTOutput(ns("main-table_data")),
+                   type = 6,
+                   color = "#44559B",
+                   size = 0.8
+                 )
           )
         )
       )

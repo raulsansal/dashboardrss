@@ -22,7 +22,8 @@ library(leaflet)
 library(leaflet.providers)
 library(tidyr)
 library(mapview)
-library(data.table)  # Necesaria para datos_lne.R
+library(data.table) 
+library(shinycssloaders)
 
 # Cargar archivos compartidos
 source("server/partidos_mapping.R")
