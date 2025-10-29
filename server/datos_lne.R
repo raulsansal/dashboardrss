@@ -186,33 +186,67 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
   
   message("📂 [cargar_lne] Cargando: ", ruta_archivo)
   
-  # ========== LEER ARCHIVO CSV (OPTIMIZADO CON fread) ==========
+  # ========== LEER ARCHIVO CSV ==========
   inicio_lectura <- Sys.time()
   
   dt <- tryCatch({
-    fread(ruta_archivo, encoding = "UTF-8", stringsAsFactors = FALSE)
+    df_temp <- read.csv(
+      ruta_archivo, 
+      stringsAsFactors = FALSE, 
+      colClasses = "character",
+      fileEncoding = "UTF-8",
+      check.names = FALSE,
+      strip.white = TRUE,
+      na.strings = c("", "NA"),
+      skipNul = TRUE
+    )
+    
+    message("📊 [cargar_lne] Filas leídas: ", nrow(df_temp))
+    as.data.table(df_temp)
   }, error = function(e) {
     message("❌ [cargar_lne] Error leyendo CSV: ", e$message)
     return(NULL)
   })
   
-  if (is.null(dt)) {
-    message("❌ [cargar_lne] fread() retornó NULL")
+  if (is.null(dt) || nrow(dt) == 0) {
+    message("❌ [cargar_lne] CSV vacío o NULL")
     return(NULL)
+  }
+  
+  # ========== EXTRAER FILA TOTALES ANTES DE NORMALIZAR ==========
+  
+  fila_totales_raw <- NULL
+  
+  # Buscar "TOTALES" en la PRIMERA columna (sin importar su nombre)
+  primera_columna <- dt[[1]]
+  idx_totales <- which(grepl("^TOTALES$", primera_columna, ignore.case = TRUE))
+  
+  if (length(idx_totales) > 0) {
+    if (length(idx_totales) > 1) {
+      message("⚠️ Encontradas ", length(idx_totales), " filas TOTALES, usando la última")
+      idx_totales <- idx_totales[length(idx_totales)]
+    }
+    
+    # Extraer fila completa como lista
+    fila_totales_raw <- as.list(dt[idx_totales, ])
+    
+    message("✅ [ANTES NORMALIZAR] Fila TOTALES extraída en posición ", idx_totales)
+    message("   📊 Total columnas en fila: ", length(fila_totales_raw))
+    
+    # Eliminar fila de totales del dataset
+    dt <- dt[-idx_totales, ]
+    message("🗑️ [ANTES NORMALIZAR] Fila TOTALES eliminada - Quedan ", nrow(dt), " filas")
+  } else {
+    message("⚠️ [ANTES NORMALIZAR] No se encontró fila TOTALES en primera columna")
   }
   
   tiempo_lectura <- round(difftime(Sys.time(), inicio_lectura, units = "secs"), 2)
-  message("⏱️ Lectura CSV: ", tiempo_lectura, " seg (", nrow(dt), " filas)")
-  
-  if (nrow(dt) == 0) {
-    message("⚠️ [cargar_lne] CSV vacío")
-    return(NULL)
-  }
+  message("⏱️ Lectura: ", tiempo_lectura, " seg")
   
   # ========== NORMALIZAR COLUMNAS ==========
   inicio_proceso <- Sys.time()
   
-  # Normalizar nombres de columnas
+  # Normalizar nombres
   colnames(dt) <- tolower(colnames(dt))
   colnames(dt) <- gsub("\\s+", "_", colnames(dt))
   colnames(dt) <- gsub("[áàäâ]", "a", colnames(dt))
@@ -222,144 +256,123 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
   colnames(dt) <- gsub("[úùüû]", "u", colnames(dt))
   colnames(dt) <- gsub("ñ", "n", colnames(dt))
   
-  message("📋 [cargar_lne] Columnas originales: ", paste(head(colnames(dt), 10), collapse = ", "))
+  message("📋 [cargar_lne] Columnas normalizadas (primeras 10): ", paste(head(colnames(dt), 10), collapse = ", "))
   
-  # Renombrar columnas clave
+  # Renombrar columnas clave (cve_ → clave_)
   col_map <- c(
-    "clave_entidad" = "clave_entidad",
-    "entidad" = "clave_entidad",
     "cve_entidad" = "clave_entidad",
-    "id_entidad" = "clave_entidad",
-    "clave_distrito" = "clave_distrito",
-    "distrito" = "clave_distrito",
     "cve_distrito" = "clave_distrito",
-    "id_distrito" = "clave_distrito",
-    "clave_municipio" = "clave_municipio",
-    "municipio" = "clave_municipio",
     "cve_municipio" = "clave_municipio",
-    "id_municipio" = "clave_municipio",
-    "seccion" = "seccion",
-    "cve_seccion" = "seccion",
-    "id_seccion" = "seccion"
+    "cve_seccion" = "seccion"
   )
   
-  for (nuevo_nombre in names(col_map)) {
-    patron <- col_map[nuevo_nombre]
-    cols_match <- grep(paste0("^", patron, "$"), colnames(dt), value = TRUE)
-    if (length(cols_match) > 0) {
-      setnames(dt, cols_match[1], nuevo_nombre, skip_absent = TRUE)
+  for (col_viejo in names(col_map)) {
+    col_nuevo <- col_map[col_viejo]
+    if (col_viejo %in% colnames(dt)) {
+      setnames(dt, col_viejo, col_nuevo)
     }
   }
   
-  # ========== AGREGAR MAPEOS ==========
+  # ========== PROCESAR FILA DE TOTALES (DESPUÉS DE NORMALIZAR) ==========
   
-  # Nombre de entidad
+  fila_totales <- NULL
+  
+  if (!is.null(fila_totales_raw)) {
+    # Asignar nombres normalizados a los valores RAW
+    nombres_normalizados <- colnames(dt)
+    
+    # Agregar las columnas que se crean después (nombre_entidad, etc.)
+    # Por ahora, solo usar las columnas del CSV
+    
+    if (length(fila_totales_raw) == length(nombres_normalizados)) {
+      names(fila_totales_raw) <- nombres_normalizados
+      fila_totales <- fila_totales_raw
+      
+      message("✅ [DESPUÉS NORMALIZAR] Fila TOTALES procesada con nombres normalizados")
+      
+      # Mostrar valores clave (buscar columnas flexiblemente)
+      col_padron_nac <- grep("^padron_nacional$", names(fila_totales), ignore.case = TRUE, value = TRUE)[1]
+      col_lista_nac <- grep("^lista_nacional$", names(fila_totales), ignore.case = TRUE, value = TRUE)[1]
+      col_padron_ext <- grep("^padron_extranjero$", names(fila_totales), ignore.case = TRUE, value = TRUE)[1]
+      col_lista_ext <- grep("^lista_extranjero$", names(fila_totales), ignore.case = TRUE, value = TRUE)[1]
+      
+      if (!is.na(col_padron_nac)) {
+        # CRÍTICO: Quitar comas (si existen) ANTES de convertir
+        valor_padron <- as.numeric(gsub(",", "", as.character(fila_totales[[col_padron_nac]])))
+        if (!is.na(valor_padron)) {
+          message("   📊 Padrón Nacional: ", format(valor_padron, big.mark = ","))
+        } else {
+          message("   ⚠️ Padrón Nacional: valor='", fila_totales[[col_padron_nac]], "' no convertible")
+        }
+      }
+      
+      if (!is.na(col_lista_nac)) {
+        valor_lista <- as.numeric(gsub(",", "", as.character(fila_totales[[col_lista_nac]])))
+        if (!is.na(valor_lista)) {
+          message("   📊 Lista Nacional: ", format(valor_lista, big.mark = ","))
+        } else {
+          message("   ⚠️ Lista Nacional: valor='", fila_totales[[col_lista_nac]], "' no convertible")
+        }
+      }
+      
+      if (!is.na(col_padron_ext)) {
+        valor_padron_ext <- as.numeric(gsub(",", "", as.character(fila_totales[[col_padron_ext]])))
+        if (!is.na(valor_padron_ext)) {
+          message("   📊 Padrón Extranjero: ", format(valor_padron_ext, big.mark = ","))
+        }
+      }
+      
+      if (!is.na(col_lista_ext)) {
+        valor_lista_ext <- as.numeric(gsub(",", "", as.character(fila_totales[[col_lista_ext]])))
+        if (!is.na(valor_lista_ext)) {
+          message("   📊 Lista Extranjero: ", format(valor_lista_ext, big.mark = ","))
+        }
+      }
+      
+    } else {
+      message("⚠️ [DESPUÉS NORMALIZAR] Longitud no coincide: raw=", length(fila_totales_raw), ", columnas=", length(nombres_normalizados))
+    }
+  } else {
+    message("⚠️ [DESPUÉS NORMALIZAR] No hay fila de totales para procesar")
+  }
+    
+  
+  # ========== AGREGAR MAPEOS GEOGRÁFICOS ==========
+  
   if ("clave_entidad" %in% colnames(dt)) {
     dt[, nombre_entidad := entidades[sprintf("%02d", as.integer(clave_entidad))]]
-    message("✅ [cargar_lne] nombre_entidad agregado")
   }
   
-  # Nombre de distrito (cabecera distrital)
   if (all(c("clave_entidad", "clave_distrito") %in% colnames(dt))) {
     dt[, cabecera_distrital := sprintf("%02d", as.integer(clave_distrito))]
-    message("✅ [cargar_lne] cabecera_distrital agregado")
   }
   
-  # Nombre de municipio
   if (all(c("clave_entidad", "clave_municipio") %in% colnames(dt))) {
     dt[, nombre_municipio := paste0(
       sprintf("%02d", as.integer(clave_entidad)), "-",
       sprintf("%03d", as.integer(clave_municipio))
     )]
-    message("✅ [cargar_lne] nombre_municipio agregado")
-  }
-  
-  # ========== ELIMINAR FILA DE TOTALES ==========
-  if ("seccion" %in% colnames(dt)) {
-    filas_antes <- nrow(dt)
-    dt <- dt[!grepl("^TOTAL", toupper(as.character(seccion)), ignore.case = TRUE)]
-    filas_despues <- nrow(dt)
-    if (filas_antes != filas_despues) {
-      message("🗑️ [cargar_lne] Eliminadas ", filas_antes - filas_despues, " filas de TOTALES")
-    }
   }
   
   # ========== PROCESAR COLUMNAS NUMÉRICAS ==========
   
-  # Identificar columnas numéricas (excluyendo claves)
   cols_numericas <- setdiff(
     colnames(dt),
     c("clave_entidad", "clave_distrito", "clave_municipio", "seccion",
       "nombre_entidad", "cabecera_distrital", "nombre_municipio")
   )
   
-  # Convertir a numéricas
   for (col in cols_numericas) {
     if (col %in% colnames(dt)) {
       dt[[col]] <- suppressWarnings(as.numeric(dt[[col]]))
     }
   }
   
-  # ========== DETECTAR Y RENOMBRAR COLUMNAS PRINCIPALES ==========
-  
-  # Padrón Electoral
-  candidatos_padron <- grep("padron.*electoral|padron_electoral", 
-                            colnames(dt), value = TRUE, ignore.case = TRUE)
-  if (length(candidatos_padron) > 0) {
-    col_padron <- candidatos_padron[1]
-    setnames(dt, col_padron, "padron_electoral", skip_absent = TRUE)
-    message("✅ [cargar_lne] padron_electoral: ", col_padron, " → padron_electoral")
-  }
-  
-  # Lista Nominal
-  candidatos_lista <- grep("lista.*nominal|lista_nominal", 
-                           colnames(dt), value = TRUE, ignore.case = TRUE)
-  if (length(candidatos_lista) > 0) {
-    col_lista <- candidatos_lista[1]
-    setnames(dt, col_lista, "lista_nominal", skip_absent = TRUE)
-    message("✅ [cargar_lne] lista_nominal: ", col_lista, " → lista_nominal")
-  }
-  
   # Calcular tasa de inclusión
-  if (all(c("padron_electoral", "lista_nominal") %in% colnames(dt))) {
-    dt[, tasa_inclusion := round((lista_nominal / padron_electoral) * 100, 2)]
-    dt[is.nan(tasa_inclusion) | is.infinite(tasa_inclusion), tasa_inclusion := NA]
-    message("✅ [cargar_lne] tasa_inclusion calculada")
-  }
-  
-  # ========== DETECTAR COLUMNAS DE SEXO ==========
-  if (dimension == "completo" || dimension == "sexo") {
-    # Padrón Hombres
-    cols_padron_h <- grep("padron.*hombres|padron_hombres", colnames(dt), 
-                          value = TRUE, ignore.case = TRUE)
-    if (length(cols_padron_h) > 0) {
-      setnames(dt, cols_padron_h[1], "padron_hombres", skip_absent = TRUE)
-      message("✅ [cargar_lne] padron_hombres detectado")
-    }
-    
-    # Padrón Mujeres
-    cols_padron_m <- grep("padron.*mujeres|padron_mujeres", colnames(dt), 
-                          value = TRUE, ignore.case = TRUE)
-    if (length(cols_padron_m) > 0) {
-      setnames(dt, cols_padron_m[1], "padron_mujeres", skip_absent = TRUE)
-      message("✅ [cargar_lne] padron_mujeres detectado")
-    }
-    
-    # Lista Hombres
-    cols_lista_h <- grep("lista.*hombres|lista_hombres", colnames(dt), 
-                         value = TRUE, ignore.case = TRUE)
-    if (length(cols_lista_h) > 0) {
-      setnames(dt, cols_lista_h[1], "lista_hombres", skip_absent = TRUE)
-      message("✅ [cargar_lne] lista_hombres detectado")
-    }
-    
-    # Lista Mujeres
-    cols_lista_m <- grep("lista.*mujeres|lista_mujeres", colnames(dt), 
-                         value = TRUE, ignore.case = TRUE)
-    if (length(cols_lista_m) > 0) {
-      setnames(dt, cols_lista_m[1], "lista_mujeres", skip_absent = TRUE)
-      message("✅ [cargar_lne] lista_mujeres detectado")
-    }
+  if (all(c("padron_nacional", "lista_nacional") %in% colnames(dt))) {
+    dt[, tasa_inclusion_nacional := round((lista_nacional / padron_nacional) * 100, 2)]
+    dt[is.nan(tasa_inclusion_nacional) | is.infinite(tasa_inclusion_nacional), tasa_inclusion_nacional := NA]
+    message("✅ tasa_inclusion_nacional calculada")
   }
   
   tiempo_proceso <- round(difftime(Sys.time(), inicio_proceso, units = "secs"), 2)
@@ -368,54 +381,38 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
   # ========== APLICAR FILTROS ==========
   inicio_filtros <- Sys.time()
   
-  # Filtro de estado
-  if (estado != "Nacional") {
-    if ("nombre_entidad" %in% colnames(dt)) {
-      dt <- dt[toupper(nombre_entidad) == toupper(estado)]
-      message("🔍 Filtro estado: ", estado, " → ", nrow(dt), " filas")
-    }
+  if (estado != "Nacional" && "nombre_entidad" %in% colnames(dt)) {
+    dt <- dt[toupper(nombre_entidad) == toupper(estado)]
+    message("🔍 Filtro estado: ", estado, " → ", nrow(dt), " filas")
   }
   
-  # Filtro de distrito
   if (distrito != "Todos" && "cabecera_distrital" %in% colnames(dt)) {
     dt <- dt[cabecera_distrital == distrito]
     message("🔍 Filtro distrito: ", distrito, " → ", nrow(dt), " filas")
   }
   
-  # Filtro de municipio
   if (municipio != "Todos" && "nombre_municipio" %in% colnames(dt)) {
     dt <- dt[nombre_municipio == municipio]
     message("🔍 Filtro municipio: ", municipio, " → ", nrow(dt), " filas")
   }
   
-  # Filtro de sección
-  if (!is.null(seccion) && length(seccion) > 0 && !("Todas" %in% seccion)) {
-    if ("seccion" %in% colnames(dt)) {
-      dt <- dt[seccion %in% seccion]
-      message("🔍 Filtro secciones: ", length(seccion), " seleccionadas → ", nrow(dt), " filas")
-    }
+  if (!is.null(seccion) && length(seccion) > 0 && !("Todas" %in% seccion) && "seccion" %in% colnames(dt)) {
+    dt <- dt[seccion %in% seccion]
+    message("🔍 Filtro secciones: ", length(seccion), " → ", nrow(dt), " filas")
   }
   
-  # Filtro de extranjero
   if (!incluir_extranjero && "nombre_entidad" %in% colnames(dt)) {
     dt <- dt[nombre_entidad != "EXTRANJERO"]
-    message("🔍 Filtro: Excluir extranjero → ", nrow(dt), " filas")
+    message("🔍 Excluir extranjero → ", nrow(dt), " filas")
   }
   
   tiempo_filtros <- round(difftime(Sys.time(), inicio_filtros, units = "secs"), 2)
   message("⏱️ Filtros: ", tiempo_filtros, " seg")
   
-  if (nrow(dt) == 0) {
-    message("⚠️ [cargar_lne] Sin datos tras aplicar filtros")
-    return(NULL)
-  }
-  
   # ========== PREPARAR RESULTADO ==========
   
-  # Convertir a data.frame
   df <- as.data.frame(dt)
   
-  # Obtener listas únicas para filtros
   todos_estados <- if ("nombre_entidad" %in% colnames(df)) {
     sort(unique(df$nombre_entidad[df$nombre_entidad != "EXTRANJERO"]))
   } else character(0)
@@ -433,16 +430,22 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
   } else character(0)
   
   tiempo_total <- round(difftime(Sys.time(), inicio_total, units = "secs"), 2)
-  message("✅ [cargar_lne] Datos cargados: ", nrow(df), " filas, ", ncol(df), " columnas (Tiempo total: ", tiempo_total, " seg)")
+  message("✅ [cargar_lne] Cargados: ", nrow(df), " filas, ", ncol(df), " columnas (", tiempo_total, " seg)")
   
-  # Retornar estructura con datos y metadatos
   resultado <- list(
     datos = df,
+    totales = fila_totales,
     todos_estados = todos_estados,
     todos_distritos = todos_distritos,
     todos_municipios = todos_municipios,
     todas_secciones = todas_secciones
   )
+  
+  if (!is.null(fila_totales)) {
+    message("✅ [cargar_lne] Retornando con fila de totales incluida")
+  } else {
+    message("⚠️ [cargar_lne] Retornando SIN fila de totales")
+  }
   
   return(resultado)
 }
