@@ -294,9 +294,18 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       lista_anuales <- list()
       
       for (año in años) {
+        message("🔍 [DEBUG] Procesando año: ", año)
+        
         fechas_año <- catalog$historico[format(catalog$historico, "%Y") == año]
+        
+        if (length(fechas_año) == 0) {
+          message("   ⚠️ [DEBUG] Sin fechas para año ", año)
+          next
+        }
+        
         if (length(fechas_año) > 0) {
           ultima_fecha <- max(fechas_año)
+          message("   📅 [DEBUG] Última fecha del año ", año, ": ", as.Date(ultima_fecha, origin = "1970-01-01"))
           
           datos_temp <- tryCatch({
             cargar_lne(
@@ -309,17 +318,68 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               seccion = "Todas",
               incluir_extranjero = TRUE
             )
-          }, error = function(e) NULL)
+          }, error = function(e) {
+            message("   ❌ [DEBUG] Error en cargar_lne para año ", año, ": ", e$message)
+            return(NULL)
+          })
           
-          # Usar fila de totales
+          # ========== VERIFICACIÓN ==========
+          if (is.null(datos_temp)) {
+            message("   ❌ [DEBUG] datos_temp es NULL para año ", año)
+            next
+          }
+          
+          if (is.null(datos_temp$totales)) {
+            message("   ❌ [DEBUG] datos_temp$totales es NULL para año ", año)
+            next
+          }
+          
+          # ========== USAR FILA DE TOTALES CON DETECCIÓN DINÁMICA ==========
           if (!is.null(datos_temp) && !is.null(datos_temp$totales)) {
             totales_fila <- datos_temp$totales
             
-            padron_nacional <- as.numeric(gsub(",", "", as.character(totales_fila$padron_nacional)))
-            padron_extranjero <- as.numeric(gsub(",", "", as.character(totales_fila$padron_extranjero)))
-            lista_nacional <- as.numeric(gsub(",", "", as.character(totales_fila$lista_nacional)))
-            lista_extranjero <- as.numeric(gsub(",", "", as.character(totales_fila$lista_extranjero)))
+            message("   ✅ [DEBUG] Fila totales obtenida para año ", año)
+            message("   📊 [DEBUG] Columnas disponibles: ", paste(names(totales_fila), collapse = ", "))
             
+            # Columnas principales (siempre existen)
+            padron_nacional <- as.numeric(gsub(",", "", as.character(totales_fila$padron_nacional)))
+            lista_nacional <- as.numeric(gsub(",", "", as.character(totales_fila$lista_nacional)))
+            
+            message("   📊 [DEBUG] padron_nacional: ", ifelse(is.na(padron_nacional), "NA", format(padron_nacional, big.mark = ",")))
+            message("   📊 [DEBUG] lista_nacional: ", ifelse(is.na(lista_nacional), "NA", format(lista_nacional, big.mark = ",")))
+            
+            # Columnas que pueden no existir en años antiguos
+            padron_extranjero <- if ("padron_extranjero" %in% names(totales_fila)) {
+              val <- as.numeric(gsub(",", "", as.character(totales_fila$padron_extranjero)))
+              message("   📊 [DEBUG] padron_extranjero encontrado: ", ifelse(is.na(val), "NA", format(val, big.mark = ",")))
+              val
+            } else {
+              message("   ⚠️ [DEBUG] padron_extranjero NO existe en columnas")
+              NULL
+            }
+            
+            lista_extranjero <- if ("lista_extranjero" %in% names(totales_fila)) {
+              val <- as.numeric(gsub(",", "", as.character(totales_fila$lista_extranjero)))
+              message("   📊 [DEBUG] lista_extranjero encontrado: ", ifelse(is.na(val), "NA", format(val, big.mark = ",")))
+              val
+            } else {
+              message("   ⚠️ [DEBUG] lista_extranjero NO existe en columnas")
+              NULL
+            }
+            
+            # Construir padrón electoral según columnas disponibles
+            padron_electoral <- padron_nacional
+            if (!is.null(padron_extranjero) && !is.na(padron_extranjero)) {
+              padron_electoral <- padron_electoral + padron_extranjero
+            }
+            
+            # Construir lista nominal según columnas disponibles
+            lista_nominal <- lista_nacional
+            if (!is.null(lista_extranjero) && !is.na(lista_extranjero)) {
+              lista_nominal <- lista_nominal + lista_extranjero
+            }
+            
+            # Columnas de sexo (pueden no existir)
             padron_hombres <- if ("padron_nacional_hombres" %in% names(totales_fila)) {
               as.numeric(gsub(",", "", as.character(totales_fila$padron_nacional_hombres)))
             } else NA
@@ -336,24 +396,31 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               as.numeric(gsub(",", "", as.character(totales_fila$lista_nacional_mujeres)))
             } else NA
             
-            if (!is.na(padron_nacional) && !is.na(lista_nacional)) {
+            # Validar que los valores principales no sean NA
+            if (!is.na(padron_electoral) && !is.na(lista_nominal)) {
               lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
                 año = as.character(año),
                 fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-                padron_electoral = padron_nacional + ifelse(is.na(padron_extranjero), 0, padron_extranjero),
-                lista_nominal = lista_nacional + ifelse(is.na(lista_extranjero), 0, lista_extranjero),
+                padron_electoral = padron_electoral,
+                lista_nominal = lista_nominal,
                 padron_hombres = padron_hombres,
                 padron_mujeres = padron_mujeres,
                 lista_hombres = lista_hombres,
                 lista_mujeres = lista_mujeres,
                 stringsAsFactors = FALSE
               )
+              
+              message("   ✅ ", año, " | Padrón: ", format(padron_electoral, big.mark = ","),
+                      " | Lista: ", format(lista_nominal, big.mark = ","))
+            } else {
+              message("   ❌ [DEBUG] Valores principales son NA para año ", año)
             }
           }
         }
       }
       
       if (length(lista_anuales) == 0) {
+        message("⚠️ [datos_anuales_completos] No se cargaron datos anuales")
         return(NULL)
       }
       
@@ -410,11 +477,34 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             # Usar totales
             totales_fila <- datos_temp$totales
             
-            padron_nacional <- as.numeric(gsub(",", "", as.character(totales_fila$padron_nacional)))
-            padron_extranjero <- as.numeric(gsub(",", "", as.character(totales_fila$padron_extranjero)))
-            lista_nacional <- as.numeric(gsub(",", "", as.character(totales_fila$lista_nacional)))
-            lista_extranjero <- as.numeric(gsub(",", "", as.character(totales_fila$lista_extranjero)))
+            # ========== DETECCIÓN DINÁMICA DE COLUMNAS ==========
             
+            # Columnas principales (siempre existen)
+            padron_nacional <- as.numeric(gsub(",", "", as.character(totales_fila$padron_nacional)))
+            lista_nacional <- as.numeric(gsub(",", "", as.character(totales_fila$lista_nacional)))
+            
+            # Columnas que pueden no existir en años antiguos
+            padron_extranjero <- if ("padron_extranjero" %in% names(totales_fila)) {
+              as.numeric(gsub(",", "", as.character(totales_fila$padron_extranjero)))
+            } else NULL
+            
+            lista_extranjero <- if ("lista_extranjero" %in% names(totales_fila)) {
+              as.numeric(gsub(",", "", as.character(totales_fila$lista_extranjero)))
+            } else NULL
+            
+            # Construir padrón electoral según columnas disponibles
+            padron_electoral <- padron_nacional
+            if (!is.null(padron_extranjero) && !is.na(padron_extranjero)) {
+              padron_electoral <- padron_electoral + padron_extranjero
+            }
+            
+            # Construir lista nominal según columnas disponibles
+            lista_nominal <- lista_nacional
+            if (!is.null(lista_extranjero) && !is.na(lista_extranjero)) {
+              lista_nominal <- lista_nominal + lista_extranjero
+            }
+            
+            # Columnas de sexo
             padron_hombres <- if ("padron_nacional_hombres" %in% names(totales_fila)) {
               as.numeric(gsub(",", "", as.character(totales_fila$padron_nacional_hombres)))
             } else NA
@@ -431,12 +521,13 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               as.numeric(gsub(",", "", as.character(totales_fila$lista_nacional_mujeres)))
             } else NA
             
-            if (!is.na(padron_nacional) && !is.na(lista_nacional)) {
+            # Validar que los valores principales no sean NA
+            if (!is.na(padron_electoral) && !is.na(lista_nominal)) {
               lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
                 año = as.character(año),
                 fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-                padron_electoral = padron_nacional + ifelse(is.na(padron_extranjero), 0, padron_extranjero),
-                lista_nominal = lista_nacional + ifelse(is.na(lista_extranjero), 0, lista_extranjero),
+                padron_electoral = padron_electoral,
+                lista_nominal = lista_nominal,
                 padron_hombres = padron_hombres,
                 padron_mujeres = padron_mujeres,
                 lista_hombres = lista_hombres,
@@ -444,21 +535,6 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                 stringsAsFactors = FALSE
               )
             }
-          } else if (!is.null(datos_temp$datos) && nrow(datos_temp$datos) > 0) {
-            # Sumar dataframe
-            df <- datos_temp$datos
-            
-            lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
-              año = as.character(año),
-              fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-              padron_electoral = sum(df$padron_nacional, na.rm = TRUE) + sum(df$padron_extranjero, na.rm = TRUE),
-              lista_nominal = sum(df$lista_nacional, na.rm = TRUE) + sum(df$lista_extranjero, na.rm = TRUE),
-              padron_hombres = if ("padron_nacional_hombres" %in% colnames(df)) sum(df$padron_nacional_hombres, na.rm = TRUE) else NA,
-              padron_mujeres = if ("padron_nacional_mujeres" %in% colnames(df)) sum(df$padron_nacional_mujeres, na.rm = TRUE) else NA,
-              lista_hombres = if ("lista_nacional_hombres" %in% colnames(df)) sum(df$lista_nacional_hombres, na.rm = TRUE) else NA,
-              lista_mujeres = if ("lista_nacional_mujeres" %in% colnames(df)) sum(df$lista_nacional_mujeres, na.rm = TRUE) else NA,
-              stringsAsFactors = FALSE
-            )
           }
         }
       }
