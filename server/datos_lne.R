@@ -161,6 +161,71 @@ encontrar_archivo_lne <- function(tipo_corte, fecha, dimension = "completo") {
   }
 }
 
+# ========== FUNCIÓN AUXILIAR: DETECTAR DELIMITADOR ==========
+
+detectar_delimitador <- function(ruta_archivo) {
+  delimitador <- tryCatch({
+    # Leer las primeras 3 líneas para mayor certeza
+    lineas <- readLines(ruta_archivo, n = 3, encoding = "UTF-8", warn = FALSE)
+    
+    # Si no se pudo leer, intentar con Latin-1
+    if (length(lineas) == 0) {
+      lineas <- readLines(ruta_archivo, n = 3, encoding = "Latin-1", warn = FALSE)
+    }
+    
+    if (length(lineas) == 0) {
+      message("   ⚠️ No se pudieron leer líneas para detectar delimitador, usando coma por defecto")
+      return(",")
+    }
+    
+    # Usar la primera línea (encabezados)
+    primera_linea <- lineas[1]
+    
+    # Contar ocurrencias de cada delimitador
+    n_comas <- length(gregexpr(",", primera_linea, fixed = TRUE)[[1]])
+    n_puntos_coma <- length(gregexpr(";", primera_linea, fixed = TRUE)[[1]])
+    n_tabs <- length(gregexpr("\t", primera_linea, fixed = TRUE)[[1]])
+    n_pipes <- length(gregexpr("|", primera_linea, fixed = TRUE)[[1]])
+    
+    # Ajustar conteo (gregexpr devuelve -1 si no encuentra)
+    if (n_comas == 1 && gregexpr(",", primera_linea, fixed = TRUE)[[1]][1] == -1) n_comas <- 0
+    if (n_puntos_coma == 1 && gregexpr(";", primera_linea, fixed = TRUE)[[1]][1] == -1) n_puntos_coma <- 0
+    if (n_tabs == 1 && gregexpr("\t", primera_linea, fixed = TRUE)[[1]][1] == -1) n_tabs <- 0
+    if (n_pipes == 1 && gregexpr("|", primera_linea, fixed = TRUE)[[1]][1] == -1) n_pipes <- 0
+    
+    message("   🔍 Delimitadores detectados: comas=", n_comas, ", puntos_coma=", n_puntos_coma, 
+            ", tabs=", n_tabs, ", pipes=", n_pipes)
+    
+    # Elegir el más común (debe haber al menos 3 para ser considerado)
+    conteos <- c(coma = n_comas, punto_coma = n_puntos_coma, tab = n_tabs, pipe = n_pipes)
+    conteos <- conteos[conteos >= 3]  # Filtrar los que tienen al menos 3 ocurrencias
+    
+    if (length(conteos) == 0) {
+      message("   ⚠️ No se detectó un delimitador claro, usando coma por defecto")
+      return(",")
+    }
+    
+    delimitador_elegido <- names(which.max(conteos))
+    
+    delim_map <- c(
+      "coma" = ",",
+      "punto_coma" = ";",
+      "tab" = "\t",
+      "pipe" = "|"
+    )
+    
+    delim_final <- delim_map[delimitador_elegido]
+    
+    return(delim_final)
+    
+  }, error = function(e) {
+    message("   ❌ Error detectando delimitador: ", e$message, ", usando coma por defecto")
+    return(",")
+  })
+  
+  return(delimitador)
+}
+
 # ========== FUNCIÓN PRINCIPAL: CARGAR LNE ==========
 
 cargar_lne <- function(tipo_corte, fecha, dimension = "completo", 
@@ -186,12 +251,18 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
   
   message("📂 [cargar_lne] Cargando: ", ruta_archivo)
   
-  # ========== LEER ARCHIVO CSV ==========
+  # ========== DETECTAR DELIMITADOR AUTOMÁTICAMENTE ==========
+  delimitador <- detectar_delimitador(ruta_archivo)
+  message("   🔧 [DEBUG] Delimitador seleccionado: '", 
+          ifelse(delimitador == "\t", "TAB", ifelse(delimitador == ";", "PUNTO_COMA", "COMA")), "'")
+  
+  # ========== LEER ARCHIVO CSV CON DELIMITADOR CORRECTO ==========
   inicio_lectura <- Sys.time()
   
   dt <- tryCatch({
     df_temp <- read.csv(
       ruta_archivo, 
+      sep = delimitador,  # ← NUEVO: usar delimitador detectado
       stringsAsFactors = FALSE, 
       colClasses = "character",
       fileEncoding = "UTF-8",
@@ -202,6 +273,7 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
     )
     
     message("📊 [cargar_lne] Filas leídas: ", nrow(df_temp))
+    message("📊 [cargar_lne] Columnas leídas: ", ncol(df_temp))
     as.data.table(df_temp)
   }, error = function(e) {
     message("❌ [cargar_lne] Error leyendo CSV: ", e$message)
@@ -211,6 +283,12 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
   if (is.null(dt) || nrow(dt) == 0) {
     message("❌ [cargar_lne] CSV vacío o NULL")
     return(NULL)
+  }
+  
+  # Verificar que se leyeron múltiples columnas
+  if (ncol(dt) <= 1) {
+    message("⚠️ [cargar_lne] ADVERTENCIA: Solo ", ncol(dt), " columna(s) detectada(s)")
+    message("   Esto indica un problema con el delimitador")
   }
   
   # ========== EXTRAER FILA TOTALES ANTES DE NORMALIZAR ==========
@@ -335,7 +413,7 @@ cargar_lne <- function(tipo_corte, fecha, dimension = "completo",
   } else {
     message("⚠️ [DESPUÉS NORMALIZAR] No hay fila de totales para procesar")
   }
-    
+  
   
   # ========== AGREGAR MAPEOS GEOGRÁFICOS ==========
   

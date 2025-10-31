@@ -401,8 +401,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
                 año = as.character(año),
                 fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-                padron_electoral = padron_electoral,
-                lista_nominal = lista_nominal,
+                padron_nacional = padron_nacional,  # ← NUEVO: columna separada
+                padron_extranjero = ifelse(!is.null(padron_extranjero) && !is.na(padron_extranjero), padron_extranjero, NA),  # ← NUEVO
+                lista_nacional = lista_nacional,  # ← NUEVO: columna separada
+                lista_extranjero = ifelse(!is.null(lista_extranjero) && !is.na(lista_extranjero), lista_extranjero, NA),  # ← NUEVO
                 padron_hombres = padron_hombres,
                 padron_mujeres = padron_mujeres,
                 lista_hombres = lista_hombres,
@@ -526,8 +528,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
                 año = as.character(año),
                 fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-                padron_electoral = padron_electoral,
-                lista_nominal = lista_nominal,
+                padron_nacional = padron_nacional,  # ← NUEVO: columna separada
+                padron_extranjero = ifelse(!is.null(padron_extranjero) && !is.na(padron_extranjero), padron_extranjero, NA),  # ← NUEVO
+                lista_nacional = lista_nacional,  # ← NUEVO: columna separada
+                lista_extranjero = ifelse(!is.null(lista_extranjero) && !is.na(lista_extranjero), lista_extranjero, NA),  # ← NUEVO
                 padron_hombres = padron_hombres,
                 padron_mujeres = padron_mujeres,
                 lista_hombres = lista_hombres,
@@ -761,7 +765,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     return(p)
   })
   
-  # ========== GRÁFICA 2: EVOLUCIÓN ANUAL (2017-AÑO ACTUAL) ==========
+  # ========== GRÁFICA 2: EVOLUCIÓN ANUAL (VERSIÓN EJE Y DUAL) ==========
   output$grafico_evolucion_anual <- renderPlotly({
     req(input$tipo_corte == "historico")
     
@@ -787,61 +791,121 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     # Crear gráfico
     p <- plot_ly()
     
-    # Línea Padrón Electoral
+    # ========== EJE Y IZQUIERDO: NACIONAL ==========
+    
+    # 1. Padrón Nacional
     p <- p %>% add_trace(
       data = datos_anuales,
       x = ~año,
-      y = ~padron_electoral,
+      y = ~padron_nacional,
       type = 'scatter',
       mode = 'lines+markers',
-      name = 'Padrón Electoral',
-      line = list(color = '#44559B', width = 3),
-      marker = list(size = 10, color = '#44559B'),
+      name = 'Padrón Nacional',
+      line = list(color = '#003E66', width = 3),
+      marker = list(size = 10, color = '#003E66'),
+      yaxis = "y",
       hovertemplate = paste0(
         '<b>%{x}</b><br>',
-        'Padrón: %{y:,.0f}<extra></extra>'
+        'Padrón Nacional: %{y:,.0f}<extra></extra>'
       )
     )
     
-    # Línea Lista Nominal
+    # 2. Lista Nacional
     p <- p %>% add_trace(
       data = datos_anuales,
       x = ~año,
-      y = ~lista_nominal,
+      y = ~lista_nacional,
       type = 'scatter',
       mode = 'lines+markers',
-      name = 'Lista Nominal',
-      line = list(color = '#C0311A', width = 3),
-      marker = list(size = 10, color = '#C0311A'),
+      name = 'Lista Nacional',
+      line = list(color = '#AE0E35', width = 3),
+      marker = list(size = 10, color = '#AE0E35'),
+      yaxis = "y",
       hovertemplate = paste0(
         '<b>%{x}</b><br>',
-        'Lista: %{y:,.0f}<extra></extra>'
+        'Lista Nacional: %{y:,.0f}<extra></extra>'
       )
     )
     
-    # Layout con alcance
+    # ========== EJE Y DERECHO: EXTRANJERO ==========
+    
+    # 3. Padrón Extranjero
+    datos_con_extranjero <- datos_anuales[!is.na(datos_anuales$padron_extranjero), ]
+    if (nrow(datos_con_extranjero) > 0) {
+      p <- p %>% add_trace(
+        data = datos_con_extranjero,
+        x = ~año,
+        y = ~padron_extranjero,
+        type = 'scatter',
+        mode = 'lines+markers',
+        name = 'Padrón Extranjero',
+        line = list(color = '#EAC43E', width = 2.5, dash = 'dot'),
+        marker = list(size = 8, color = '#EAC43E', symbol = 'square'),
+        yaxis = "y2",
+        hovertemplate = paste0(
+          '<b>%{x}</b><br>',
+          'Padrón Extranjero: %{y:,.0f}<extra></extra>'
+        )
+      )
+    }
+    
+    # 4. Lista Extranjero
+    datos_con_lista_ext <- datos_anuales[!is.na(datos_anuales$lista_extranjero), ]
+    if (nrow(datos_con_lista_ext) > 0) {
+      p <- p %>% add_trace(
+        data = datos_con_lista_ext,
+        x = ~año,
+        y = ~lista_extranjero,
+        type = 'scatter',
+        mode = 'lines+markers',
+        name = 'Lista Extranjero',
+        line = list(color = '#B3D491', width = 2.5, dash = 'dot'),
+        marker = list(size = 8, color = '#B3D491', symbol = 'square'),
+        yaxis = "y2",
+        hovertemplate = paste0(
+          '<b>%{x}</b><br>',
+          'Lista Extranjero: %{y:,.0f}<extra></extra>'
+        )
+      )
+    }
+    
+    # ========== LAYOUT CON DOS EJES Y ==========
     p <- p %>% layout(
       title = list(
-        text = paste0("Evolución Anual (2017-", anio_actual(), ") - Padrón Electoral y Lista Nominal"),
+        text = paste0("Evolución Anual (2017-", anio_actual(), ") - Nacional y Extranjero"),
         font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
         x = 0.5,
         xanchor = "center"
       ),
       xaxis = list(
-        title = "Año",
+        title = list(
+          text = "Año",
+          standoff = 20
+        ),
         type = 'category'
       ),
       yaxis = list(
-        title = "Número de Electores",
-        separatethousands = TRUE
+        title = "Nacional (Electores)",
+        titlefont = list(color = "#003E66", size = 14),
+        tickfont = list(color = "#003E66"),
+        separatethousands = TRUE,
+        side = "left"
+      ),
+      yaxis2 = list(
+        title = "Extranjero (Electores)",
+        titlefont = list(color = "#518033", size = 14),
+        tickfont = list(color = "#518033"),
+        separatethousands = TRUE,
+        overlaying = "y",
+        side = "right"
       ),
       legend = list(
         orientation = "h",
         xanchor = "center",
         x = 0.5,
-        y = -0.15
+        y = -0.25
       ),
-      margin = list(t = 120, b = 100, l = 80, r = 50),
+      margin = list(t = 120, b = 120, l = 90, r = 90),
       hovermode = 'x unified',
       annotations = list(
         list(
@@ -858,20 +922,20 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         ),
         list(
           text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-          x = 0.0,
-          y = -0.25,
+          x = 0.5,
+          y = -0.40,
           xref = "paper",
           yref = "paper",
-          xanchor = "left",
+          xanchor = "center",
           yanchor = "top",
           showarrow = FALSE,
           font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
-          align = "left"
+          align = "center"
         )
       )
     )
     
-    message("✅ Gráfico 2: Evolución anual renderizado")
+    message("✅ Gráfico 2: Evolución anual con eje Y dual renderizado")
     return(p)
   })
   
