@@ -17,6 +17,19 @@ lista_nominal_ui <- function(id) {
         ),
         uiOutput(ns("info_tipo_corte")),
         tags$hr(),
+        
+        # ========== NUEVO: SELECTOR NACIONAL/EXTRANJERO ==========
+        radioButtons(
+          ns("ambito_datos"), 
+          "Ámbito de datos:",
+          choices = c("Nacional" = "nacional", 
+                      "Extranjero" = "extranjero"),
+          selected = "nacional",
+          inline = TRUE
+        ),
+        tags$hr(),
+        # ========== FIN SELECTOR NACIONAL/EXTRANJERO ==========
+        
         selectInput(ns("year"), "Año:", choices = NULL, selected = NULL),
         selectInput(ns("date"), "Fecha de corte:", choices = NULL, selected = NULL),
         uiOutput(ns("info_fecha")),
@@ -49,7 +62,7 @@ lista_nominal_ui <- function(id) {
         ),
         tags$hr(),
         
-        # ========== NUEVO: BOTÓN CONSULTAR ==========
+        # ========== BOTÓN CONSULTAR ==========
         actionButton(
           ns("btn_consultar"), 
           "Consultar", 
@@ -78,14 +91,31 @@ lista_nominal_ui <- function(id) {
           # Gráfica 1: Evolución mensual 2025 + Proyección
           fluidRow(
             column(12, 
+                   # ========== GRÁFICA ==========
                    div(class = "plot-container",
-                       style = "height: 450px; margin-bottom: 30px;",
+                       style = "height: 450px; margin-bottom: 10px;",
                        shinycssloaders::withSpinner(
                          plotlyOutput(ns("grafico_evolucion_2025"), width = "100%", height = "450px"),
                          type = 6,
                          color = "#44559B",
                          size = 1
                        )
+                   ),
+                   # ========== BOTÓN INFO DEBAJO (al lado de donde estaría la leyenda) ==========
+                   div(
+                     style = "display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 20px;",
+                     tags$span(
+                       style = "color: #666; font-size: 12px;",
+                       "Información adicional:"
+                     ),
+                     actionButton(
+                       ns("info_grafica1"),
+                       label = "Metodología de Proyección",
+                       icon = icon("info-circle"),
+                       class = "btn-sm btn-outline-info",
+                       style = "font-size: 12px; padding: 4px 12px; border-radius: 15px; cursor: pointer;",
+                       title = "Ver metodología de proyección"
+                     )
                    )
             )
           ),

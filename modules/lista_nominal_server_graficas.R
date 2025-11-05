@@ -115,15 +115,15 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           
           # Validar que no sean NA
           if (!is.na(padron_nacional) && !is.na(lista_nacional)) {
-            # ========== NUEVO: COLUMNAS SEPARADAS + TOTALES ==========
+            # ========== COLUMNAS SEPARADAS + TOTALES ==========
             registro <- data.frame(
               fecha = as.Date(fecha, origin = "1970-01-01"),
               padron_nacional = padron_nacional,
               padron_extranjero = ifelse(is.na(padron_extranjero), NA, padron_extranjero),
               lista_nacional = lista_nacional,
               lista_extranjero = ifelse(is.na(lista_extranjero), NA, lista_extranjero),
-              padron_electoral = padron_nacional + ifelse(is.na(padron_extranjero), 0, padron_extranjero),  # Total
-              lista_nominal = lista_nacional + ifelse(is.na(lista_extranjero), 0, lista_extranjero),  # Total
+              padron_electoral = padron_nacional + ifelse(is.na(padron_extranjero), 0, padron_extranjero),
+              lista_nominal = lista_nacional + ifelse(is.na(lista_extranjero), 0, lista_extranjero),
               padron_hombres = padron_hombres,
               padron_mujeres = padron_mujeres,
               lista_hombres = lista_hombres,
@@ -419,10 +419,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
                 año = as.character(año),
                 fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-                padron_nacional = padron_nacional,  # ← NUEVO: columna separada
-                padron_extranjero = ifelse(!is.null(padron_extranjero) && !is.na(padron_extranjero), padron_extranjero, NA),  # ← NUEVO
-                lista_nacional = lista_nacional,  # ← NUEVO: columna separada
-                lista_extranjero = ifelse(!is.null(lista_extranjero) && !is.na(lista_extranjero), lista_extranjero, NA),  # ← NUEVO
+                padron_nacional = padron_nacional,
+                padron_extranjero = ifelse(!is.null(padron_extranjero) && !is.na(padron_extranjero), padron_extranjero, NA),
+                lista_nacional = lista_nacional,
+                lista_extranjero = ifelse(!is.null(lista_extranjero) && !is.na(lista_extranjero), lista_extranjero, NA),
                 padron_hombres = padron_hombres,
                 padron_mujeres = padron_mujeres,
                 lista_hombres = lista_hombres,
@@ -546,10 +546,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               lista_anuales[[length(lista_anuales) + 1]] <- data.frame(
                 año = as.character(año),
                 fecha = as.Date(ultima_fecha, origin = "1970-01-01"),
-                padron_nacional = padron_nacional,  # ← NUEVO: columna separada
-                padron_extranjero = ifelse(!is.null(padron_extranjero) && !is.na(padron_extranjero), padron_extranjero, NA),  # ← NUEVO
-                lista_nacional = lista_nacional,  # ← NUEVO: columna separada
-                lista_extranjero = ifelse(!is.null(lista_extranjero) && !is.na(lista_extranjero), lista_extranjero, NA),  # ← NUEVO
+                padron_nacional = padron_nacional,
+                padron_extranjero = ifelse(!is.null(padron_extranjero) && !is.na(padron_extranjero), padron_extranjero, NA),
+                lista_nacional = lista_nacional,
+                lista_extranjero = ifelse(!is.null(lista_extranjero) && !is.na(lista_extranjero), lista_extranjero, NA),
                 padron_hombres = padron_hombres,
                 padron_mujeres = padron_mujeres,
                 lista_hombres = lista_hombres,
@@ -575,23 +575,36 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     bindCache(input$btn_consultar, input$tipo_corte, input$entidad, 
               input$distrito, input$municipio, input$seccion)
   
-  # ========== FUNCIÓN AUXILIAR: PROYECCIÓN CON TASA DE CRECIMIENTO ==========
+  # ========== FUNCIÓN AUXILIAR: PROYECCIÓN CON TASA DE CRECIMIENTO (NACIONAL) ==========
   
-  proyectar_con_tasa_crecimiento <- function(datos, meses_proyectar = 5) {
+  proyectar_con_tasa_crecimiento <- function(datos, meses_proyectar = 5, usar_columnas_separadas = FALSE) {
     if (is.null(datos) || nrow(datos) < 2) {
       return(NULL)
     }
     
     # Calcular tasa de crecimiento mensual promedio
     n <- nrow(datos)
-    valor_inicial <- datos$lista_nominal[1]
-    valor_final <- datos$lista_nominal[n]
+    
+    if (usar_columnas_separadas) {
+      # Para Nacional: usar lista_nacional
+      valor_inicial <- datos$lista_nacional[1]
+      valor_final <- datos$lista_nacional[n]
+      padron_inicial <- datos$padron_nacional[1]
+      padron_final <- datos$padron_nacional[n]
+    } else {
+      # Para totales (retrocompatibilidad)
+      valor_inicial <- datos$lista_nominal[1]
+      valor_final <- datos$lista_nominal[n]
+      padron_inicial <- datos$padron_electoral[1]
+      padron_final <- datos$padron_electoral[n]
+    }
     
     if (valor_inicial == 0 || is.na(valor_inicial) || is.na(valor_final)) {
       return(NULL)
     }
     
-    tasa_mensual <- ((valor_final / valor_inicial) ^ (1 / (n - 1))) - 1
+    tasa_mensual_lista <- ((valor_final / valor_inicial) ^ (1 / (n - 1))) - 1
+    tasa_mensual_padron <- ((padron_final / padron_inicial) ^ (1 / (n - 1))) - 1
     
     # Crear fechas proyectadas
     ultima_fecha <- max(datos$fecha)
@@ -600,31 +613,29 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     # Proyectar valores
     proyecciones <- data.frame(
       fecha = fechas_proyectadas,
-      lista_nominal = numeric(meses_proyectar),
-      padron_electoral = numeric(meses_proyectar),
+      lista_proyectada = numeric(meses_proyectar),
+      padron_proyectado = numeric(meses_proyectar),
       stringsAsFactors = FALSE
     )
     
-    ultimo_valor_lista <- datos$lista_nominal[n]
-    ultimo_valor_padron <- datos$padron_electoral[n]
-    
     for (i in 1:meses_proyectar) {
-      proyecciones$lista_nominal[i] <- ultimo_valor_lista * ((1 + tasa_mensual) ^ i)
-      proyecciones$padron_electoral[i] <- ultimo_valor_padron * ((1 + tasa_mensual) ^ i)
+      proyecciones$lista_proyectada[i] <- valor_final * ((1 + tasa_mensual_lista) ^ i)
+      proyecciones$padron_proyectado[i] <- padron_final * ((1 + tasa_mensual_padron) ^ i)
     }
     
     proyecciones$tipo <- "Proyección"
     
-    message("✅ Proyección calculada: tasa mensual = ", round(tasa_mensual * 100, 4), "%")
+    message("✅ Proyección calculada: tasa mensual lista = ", round(tasa_mensual_lista * 100, 4), "%")
     
     return(proyecciones)
   }
   
   # ========== GRÁFICAS PARA DATOS HISTÓRICOS ==========
   
-  # ========== GRÁFICA 1: EVOLUCIÓN MENSUAL AÑO ACTUAL CON EJE Y DUAL ==========
+  # ========== GRÁFICA 1: EVOLUCIÓN MENSUAL AÑO ACTUAL ==========
   output$grafico_evolucion_2025 <- renderPlotly({
     req(input$tipo_corte == "historico")
+    req(input$ambito_datos)
     
     datos_completos <- datos_historicos_year()
     
@@ -645,217 +656,332 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                ))
     }
     
-    # Obtener año de los datos
-    year_datos <- format(datos_completos$fecha[1], "%Y")
+    # Obtener año de los datos (del último registro disponible)
+    year_datos <- format(max(datos_completos$fecha), "%Y")
     
     # Calcular meses restantes hasta diciembre
     ultimo_mes <- as.numeric(format(max(datos_completos$fecha), "%m"))
     meses_restantes <- 12 - ultimo_mes
     
-    # Proyectar SOLO TOTALES NACIONALES si hay meses pendientes
-    proyeccion <- NULL
-    if (meses_restantes > 0) {
-      proyeccion <- proyectar_con_tasa_crecimiento(datos_completos, meses_restantes)
-    }
-    
-    # Crear gráfico base
-    p <- plot_ly()
-    
-    # ========== EJE Y IZQUIERDO: NACIONAL (DATOS REALES) ==========
-    
-    # 1. Padrón Nacional
-    p <- p %>% add_trace(
-      data = datos_completos,
-      x = ~fecha,
-      y = ~padron_nacional,
-      type = 'scatter',
-      mode = 'lines+markers',
-      name = 'Padrón Nacional',
-      line = list(color = '#003E66', width = 3),
-      marker = list(size = 8, color = '#003E66'),
-      yaxis = "y",
-      hovertemplate = paste0(
-        '<b>%{x|%B %Y}</b><br>',
-        'Padrón Nacional: %{y:,.0f}<extra></extra>'
-      )
-    )
-    
-    # 2. Lista Nacional
-    p <- p %>% add_trace(
-      data = datos_completos,
-      x = ~fecha,
-      y = ~lista_nacional,
-      type = 'scatter',
-      mode = 'lines+markers',
-      name = 'Lista Nacional',
-      line = list(color = '#AE0E35', width = 3),
-      marker = list(size = 8, color = '#AE0E35'),
-      yaxis = "y",
-      hovertemplate = paste0(
-        '<b>%{x|%B %Y}</b><br>',
-        'Lista Nacional: %{y:,.0f}<extra></extra>'
-      )
-    )
-    
-    # ========== EJE Y DERECHO: EXTRANJERO (DATOS REALES) ==========
-    
-    # 3. Padrón Extranjero (solo si existen datos)
-    datos_con_extranjero <- datos_completos[!is.na(datos_completos$padron_extranjero), ]
-    if (nrow(datos_con_extranjero) > 0) {
+    # ========== GRÁFICA NACIONAL ==========
+    if (input$ambito_datos == "nacional") {
+      
+      # Proyectar usando columnas nacionales
+      proyeccion <- NULL
+      if (meses_restantes > 0) {
+        # Crear dataframe temporal con solo columnas nacionales
+        datos_para_proyeccion <- datos_completos
+        datos_para_proyeccion$lista_nominal <- datos_para_proyeccion$lista_nacional
+        datos_para_proyeccion$padron_electoral <- datos_para_proyeccion$padron_nacional
+        proyeccion <- proyectar_con_tasa_crecimiento(datos_para_proyeccion, meses_restantes)
+      }
+      
+      # Crear gráfico
+      p <- plot_ly()
+      
+      # 1. Padrón Nacional
       p <- p %>% add_trace(
-        data = datos_con_extranjero,
+        data = datos_completos,
+        x = ~fecha,
+        y = ~padron_nacional,
+        type = 'scatter',
+        mode = 'lines+markers',
+        name = 'Padrón Nacional',
+        line = list(color = '#003E66', width = 3),
+        marker = list(size = 8, color = '#003E66'),
+        hovertemplate = paste0(
+          '<b>%{x|%B %Y}</b><br>',
+          'Padrón Nacional: %{y:,.0f}<extra></extra>'
+        )
+      )
+      
+      # 2. Lista Nacional
+      p <- p %>% add_trace(
+        data = datos_completos,
+        x = ~fecha,
+        y = ~lista_nacional,
+        type = 'scatter',
+        mode = 'lines+markers',
+        name = 'Lista Nacional',
+        line = list(color = '#AE0E35', width = 3),
+        marker = list(size = 8, color = '#AE0E35'),
+        hovertemplate = paste0(
+          '<b>%{x|%B %Y}</b><br>',
+          'Lista Nacional: %{y:,.0f}<extra></extra>'
+        )
+      )
+      
+      # Proyecciones
+      if (!is.null(proyeccion)) {
+        # Proyección Padrón
+        p <- p %>% add_trace(
+          data = proyeccion,
+          x = ~fecha,
+          y = ~padron_proyectado,
+          type = 'scatter',
+          mode = 'lines',
+          name = 'Proyección Padrón',
+          line = list(color = '#6B8FB3', width = 2, dash = 'dash'),
+          hovertemplate = paste0(
+            '<b>%{x|%B %Y}</b><br>',
+            'Proyección Padrón: %{y:,.0f}<extra></extra>'
+          )
+        )
+        
+        # Proyección Lista
+        p <- p %>% add_trace(
+          data = proyeccion,
+          x = ~fecha,
+          y = ~lista_proyectada,
+          type = 'scatter',
+          mode = 'lines',
+          name = 'Proyección Lista',
+          line = list(color = '#D66B7D', width = 2, dash = 'dash'),
+          hovertemplate = paste0(
+            '<b>%{x|%B %Y}</b><br>',
+            'Proyección Lista: %{y:,.0f}<extra></extra>'
+          )
+        )
+      }
+      
+      # ========== CONFIGURACIÓN DEL EJE X CORREGIDA ==========
+      # Crear secuencia de fechas para todos los meses del año
+      fechas_completas <- seq(as.Date(paste0(year_datos, "-01-01")), 
+                              as.Date(paste0(year_datos, "-12-01")), 
+                              by = "month")
+      
+      # Etiquetas de meses en español
+      meses_espanol <- c("Ene", "Feb", "Mar", "Abr", "May", "Jun", 
+                         "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+      
+      # Layout con eje X corregido
+      p <- p %>% layout(
+        title = list(
+          text = paste0("Proyección de Padrón y Lista Nominal ", year_datos, " - Nacional"),
+          font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
+          x = 0.5,
+          xanchor = "center"
+        ),
+        xaxis = list(
+          title = "",
+          type = 'date',
+          tickmode = "array",
+          tickvals = fechas_completas,
+          ticktext = meses_espanol,
+          tickangle = 0,
+          range = c(as.Date(paste0(year_datos, "-01-01")), 
+                    as.Date(paste0(year_datos, "-12-31")))
+        ),
+        yaxis = list(
+          title = "Número de Electores", 
+          separatethousands = TRUE
+        ),
+        legend = list(
+          orientation = "h", 
+          xanchor = "center", 
+          x = 0.5, 
+          y = -0.20
+        ),
+        margin = list(t = 120, b = 120, l = 90, r = 50),
+        hovermode = 'x unified',
+        annotations = list(
+          list(
+            text = generar_texto_alcance(input),
+            x = 0.5, y = 1.12,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
+            align = "center"
+          ),
+          list(
+            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            x = 0.5, y = -0.35,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
+            align = "center"
+          )
+        )
+      )
+      
+      message("✅ Gráfico 1: Proyección ", year_datos, " Nacional renderizado")
+      return(p)
+      
+    } else {
+      # ========== GRÁFICA EXTRANJERO ==========
+      
+      # Filtrar solo datos con extranjero
+      datos_extranjero <- datos_completos[!is.na(datos_completos$padron_extranjero) & 
+                                            !is.na(datos_completos$lista_extranjero), ]
+      
+      if (nrow(datos_extranjero) == 0) {
+        return(plot_ly() %>%
+                 layout(
+                   xaxis = list(visible = FALSE),
+                   yaxis = list(visible = FALSE),
+                   annotations = list(
+                     list(
+                       text = "Datos de extranjero no disponibles para este año",
+                       xref = "paper", yref = "paper",
+                       x = 0.5, y = 0.5,
+                       showarrow = FALSE,
+                       font = list(size = 14, color = "#666")
+                     )
+                   )
+                 ))
+      }
+      
+      # Proyectar usando columnas extranjero
+      proyeccion <- NULL
+      if (meses_restantes > 0) {
+        # Crear dataframe temporal
+        datos_para_proyeccion <- datos_extranjero
+        datos_para_proyeccion$lista_nominal <- datos_para_proyeccion$lista_extranjero
+        datos_para_proyeccion$padron_electoral <- datos_para_proyeccion$padron_extranjero
+        proyeccion <- proyectar_con_tasa_crecimiento(datos_para_proyeccion, meses_restantes)
+      }
+      
+      # Crear gráfico
+      p <- plot_ly()
+      
+      # 1. Padrón Extranjero
+      p <- p %>% add_trace(
+        data = datos_extranjero,
         x = ~fecha,
         y = ~padron_extranjero,
         type = 'scatter',
         mode = 'lines+markers',
         name = 'Padrón Extranjero',
-        line = list(color = '#EAC43E', width = 2.5, dash = 'dot'),
-        marker = list(size = 8, color = '#EAC43E', symbol = 'square'),
-        yaxis = "y2",
+        line = list(color = '#EAC43E', width = 3),
+        marker = list(size = 8, color = '#EAC43E'),
         hovertemplate = paste0(
           '<b>%{x|%B %Y}</b><br>',
           'Padrón Extranjero: %{y:,.0f}<extra></extra>'
         )
       )
-    }
-    
-    # 4. Lista Extranjero (solo si existen datos)
-    datos_con_lista_ext <- datos_completos[!is.na(datos_completos$lista_extranjero), ]
-    if (nrow(datos_con_lista_ext) > 0) {
+      
+      # 2. Lista Extranjero
       p <- p %>% add_trace(
-        data = datos_con_lista_ext,
+        data = datos_extranjero,
         x = ~fecha,
         y = ~lista_extranjero,
         type = 'scatter',
         mode = 'lines+markers',
         name = 'Lista Extranjero',
-        line = list(color = '#B3D491', width = 2.5, dash = 'dot'),
-        marker = list(size = 8, color = '#B3D491', symbol = 'square'),
-        yaxis = "y2",
+        line = list(color = '#B3D491', width = 3),
+        marker = list(size = 8, color = '#B3D491'),
         hovertemplate = paste0(
           '<b>%{x|%B %Y}</b><br>',
           'Lista Extranjero: %{y:,.0f}<extra></extra>'
         )
       )
-    }
-    
-    # ========== PROYECCIONES (SOLO TOTALES NACIONALES) ==========
-    if (!is.null(proyeccion)) {
-      # Calcular totales nacionales proyectados (restar extranjero de los totales)
-      # Como la proyección usa totales, necesitamos calcular el promedio de extranjero para restar
-      promedio_extranjero_padron <- mean(datos_completos$padron_extranjero[!is.na(datos_completos$padron_extranjero)])
-      promedio_extranjero_lista <- mean(datos_completos$lista_extranjero[!is.na(datos_completos$lista_extranjero)])
       
-      if (is.na(promedio_extranjero_padron)) promedio_extranjero_padron <- 0
-      if (is.na(promedio_extranjero_lista)) promedio_extranjero_lista <- 0
-      
-      # Proyección Padrón Nacional (estimado)
-      p <- p %>% add_trace(
-        data = proyeccion,
-        x = ~fecha,
-        y = ~(padron_electoral - promedio_extranjero_padron),
-        type = 'scatter',
-        mode = 'lines',
-        name = 'Proyección Padrón',
-        line = list(color = '#6B8FB3', width = 2, dash = 'dash'),
-        yaxis = "y",
-        hovertemplate = paste0(
-          '<b>%{x|%B %Y}</b><br>',
-          'Proyección Padrón: %{y:,.0f}<extra></extra>'
+      # Proyecciones
+      if (!is.null(proyeccion)) {
+        # Proyección Padrón
+        p <- p %>% add_trace(
+          data = proyeccion,
+          x = ~fecha,
+          y = ~padron_proyectado,
+          type = 'scatter',
+          mode = 'lines',
+          name = 'Proyección Padrón',
+          line = list(color = '#F5CA45', width = 2, dash = 'dash'),
+          hovertemplate = paste0(
+            '<b>%{x|%B %Y}</b><br>',
+            'Proyección Padrón: %{y:,.0f}<extra></extra>'
+          )
         )
-      )
-      
-      # Proyección Lista Nacional (estimado)
-      p <- p %>% add_trace(
-        data = proyeccion,
-        x = ~fecha,
-        y = ~(lista_nominal - promedio_extranjero_lista),
-        type = 'scatter',
-        mode = 'lines',
-        name = 'Proyección Lista',
-        line = list(color = '#D66B7D', width = 2, dash = 'dash'),
-        yaxis = "y",
-        hovertemplate = paste0(
-          '<b>%{x|%B %Y}</b><br>',
-          'Proyección Lista: %{y:,.0f}<extra></extra>'
+        
+        # Proyección Lista
+        p <- p %>% add_trace(
+          data = proyeccion,
+          x = ~fecha,
+          y = ~lista_proyectada,
+          type = 'scatter',
+          mode = 'lines',
+          name = 'Proyección Lista',
+          line = list(color = '#CCE4B1', width = 2, dash = 'dash'),
+          hovertemplate = paste0(
+            '<b>%{x|%B %Y}</b><br>',
+            'Proyección Lista: %{y:,.0f}<extra></extra>'
+          )
         )
-      )
-    }
-    
-    # ========== LAYOUT CON DOS EJES Y ==========
-    p <- p %>% layout(
-      title = list(
-        text = paste0("Evolución Mensual ", year_datos, " - Nacional y Extranjero"),
-        font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
-        x = 0.5,
-        xanchor = "center"
-      ),
-      xaxis = list(
+      }
+      
+      # ========== CONFIGURACIÓN DEL EJE X CORREGIDA ==========
+      # Crear secuencia de fechas para todos los meses del año
+      fechas_completas <- seq(as.Date(paste0(year_datos, "-01-01")), 
+                              as.Date(paste0(year_datos, "-12-01")), 
+                              by = "month")
+      
+      # Etiquetas de meses en español
+      meses_espanol <- c("Ene", "Feb", "Mar", "Abr", "May", "Jun", 
+                         "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+      
+      # Layout con eje X corregido
+      p <- p %>% layout(
         title = list(
-          text = "",
-          standoff = 20
-        ),
-        type = 'date',
-        tickformat = "%b"
-      ),
-      yaxis = list(
-        title = "Nacional (Electores)",
-        titlefont = list(color = "#003E66", size = 14),
-        tickfont = list(color = "#003E66"),
-        separatethousands = TRUE,
-        side = "left"
-      ),
-      yaxis2 = list(
-        title = "Extranjero (Electores)",
-        titlefont = list(color = "#518033", size = 14),
-        tickfont = list(color = "#518033"),
-        separatethousands = TRUE,
-        overlaying = "y",
-        side = "right"
-      ),
-      legend = list(
-        orientation = "h",
-        xanchor = "center",
-        x = 0.5,
-        y = -0.20
-      ),
-      margin = list(t = 120, b = 120, l = 90, r = 90),
-      hovermode = 'x unified',
-      annotations = list(
-        list(
-          text = generar_texto_alcance(input),
+          text = paste0("Proyección de Padrón y Lista Nominal ", year_datos, " - Extranjero"),
+          font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
           x = 0.5,
-          y = 1.12,
-          xref = "paper",
-          yref = "paper",
-          xanchor = "center",
-          yanchor = "top",
-          showarrow = FALSE,
-          font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
-          align = "center"
+          xanchor = "center"
         ),
-        list(
-          text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-          x = 0.5,
-          y = -0.30,
-          xref = "paper",
-          yref = "paper",
-          xanchor = "center",
-          yanchor = "top",
-          showarrow = FALSE,
-          font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
-          align = "center"
+        xaxis = list(
+          title = "",
+          type = 'date',
+          tickmode = "array",
+          tickvals = fechas_completas,
+          ticktext = meses_espanol,
+          tickangle = 0,
+          range = c(as.Date(paste0(year_datos, "-01-01")), 
+                    as.Date(paste0(year_datos, "-12-31")))
+        ),
+        yaxis = list(
+          title = "Número de Electores", 
+          separatethousands = TRUE
+        ),
+        legend = list(
+          orientation = "h", 
+          xanchor = "center", 
+          x = 0.5, 
+          y = -0.20
+        ),
+        margin = list(t = 120, b = 120, l = 90, r = 50),
+        hovermode = 'x unified',
+        annotations = list(
+          list(
+            text = generar_texto_alcance(input),
+            x = 0.5, y = 1.12,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
+            align = "center"
+          ),
+          list(
+            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            x = 0.5, y = -0.35,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
+            align = "center"
+          )
         )
       )
-    )
-    
-    message("✅ Gráfico 1: Evolución ", year_datos, " con 4 líneas + proyección renderizado")
-    return(p)
+      
+      message("✅ Gráfico 1: Proyección ", year_datos, " Extranjero renderizado")
+      return(p)
+    }
   })
   
-  # ========== GRÁFICA 2: EVOLUCIÓN ANUAL (VERSIÓN EJE Y DUAL) ==========
+  # ========== GRÁFICA 2: EVOLUCIÓN ANUAL ==========
   output$grafico_evolucion_anual <- renderPlotly({
     req(input$tipo_corte == "historico")
+    req(input$ambito_datos)
     
     datos_anuales <- datos_anuales_completos()
     
@@ -876,160 +1002,183 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                ))
     }
     
-    # Crear gráfico
-    p <- plot_ly()
-    
-    # ========== EJE Y IZQUIERDO: NACIONAL ==========
-    
-    # 1. Padrón Nacional
-    p <- p %>% add_trace(
-      data = datos_anuales,
-      x = ~año,
-      y = ~padron_nacional,
-      type = 'scatter',
-      mode = 'lines+markers',
-      name = 'Padrón Nacional',
-      line = list(color = '#003E66', width = 3),
-      marker = list(size = 10, color = '#003E66'),
-      yaxis = "y",
-      hovertemplate = paste0(
-        '<b>%{x}</b><br>',
-        'Padrón Nacional: %{y:,.0f}<extra></extra>'
-      )
-    )
-    
-    # 2. Lista Nacional
-    p <- p %>% add_trace(
-      data = datos_anuales,
-      x = ~año,
-      y = ~lista_nacional,
-      type = 'scatter',
-      mode = 'lines+markers',
-      name = 'Lista Nacional',
-      line = list(color = '#AE0E35', width = 3),
-      marker = list(size = 10, color = '#AE0E35'),
-      yaxis = "y",
-      hovertemplate = paste0(
-        '<b>%{x}</b><br>',
-        'Lista Nacional: %{y:,.0f}<extra></extra>'
-      )
-    )
-    
-    # ========== EJE Y DERECHO: EXTRANJERO ==========
-    
-    # 3. Padrón Extranjero
-    datos_con_extranjero <- datos_anuales[!is.na(datos_anuales$padron_extranjero), ]
-    if (nrow(datos_con_extranjero) > 0) {
+    # ========== GRÁFICA NACIONAL ==========
+    if (input$ambito_datos == "nacional") {
+      
+      p <- plot_ly()
+      
+      # 1. Padrón Nacional
       p <- p %>% add_trace(
-        data = datos_con_extranjero,
+        data = datos_anuales,
+        x = ~año,
+        y = ~padron_nacional,
+        type = 'scatter',
+        mode = 'lines+markers',
+        name = 'Padrón Nacional',
+        line = list(color = '#003E66', width = 3),
+        marker = list(size = 10, color = '#003E66'),
+        hovertemplate = paste0(
+          '<b>%{x}</b><br>',
+          'Padrón Nacional: %{y:,.0f}<extra></extra>'
+        )
+      )
+      
+      # 2. Lista Nacional
+      p <- p %>% add_trace(
+        data = datos_anuales,
+        x = ~año,
+        y = ~lista_nacional,
+        type = 'scatter',
+        mode = 'lines+markers',
+        name = 'Lista Nacional',
+        line = list(color = '#AE0E35', width = 3),
+        marker = list(size = 10, color = '#AE0E35'),
+        hovertemplate = paste0(
+          '<b>%{x}</b><br>',
+          'Lista Nacional: %{y:,.0f}<extra></extra>'
+        )
+      )
+      
+      # Layout
+      p <- p %>% layout(
+        title = list(
+          text = paste0("Evolución Anual (2017-", anio_actual(), ") - Nacional"),
+          font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
+          x = 0.5,
+          xanchor = "center"
+        ),
+        xaxis = list(title = "Año", type = 'category'),
+        yaxis = list(title = "Número de Electores", separatethousands = TRUE),
+        legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
+        margin = list(t = 120, b = 120, l = 90, r = 50),
+        hovermode = 'x unified',
+        annotations = list(
+          list(
+            text = generar_texto_alcance(input),
+            x = 0.5, y = 1.12,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
+            align = "center"
+          ),
+          list(
+            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            x = 0.5, y = -0.30,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
+            align = "center"
+          )
+        )
+      )
+      
+      message("✅ Gráfico 2: Evolución anual Nacional renderizado")
+      return(p)
+      
+    } else {
+      # ========== GRÁFICA EXTRANJERO ==========
+      
+      # Filtrar solo años con datos de extranjero (2020 en adelante)
+      datos_extranjero <- datos_anuales[!is.na(datos_anuales$padron_extranjero) & 
+                                          !is.na(datos_anuales$lista_extranjero), ]
+      
+      if (nrow(datos_extranjero) == 0) {
+        return(plot_ly() %>%
+                 layout(
+                   xaxis = list(visible = FALSE),
+                   yaxis = list(visible = FALSE),
+                   annotations = list(
+                     list(
+                       text = "Datos de extranjero disponibles desde 2020",
+                       xref = "paper", yref = "paper",
+                       x = 0.5, y = 0.5,
+                       showarrow = FALSE,
+                       font = list(size = 14, color = "#666")
+                     )
+                   )
+                 ))
+      }
+      
+      p <- plot_ly()
+      
+      # 1. Padrón Extranjero
+      p <- p %>% add_trace(
+        data = datos_extranjero,
         x = ~año,
         y = ~padron_extranjero,
         type = 'scatter',
         mode = 'lines+markers',
         name = 'Padrón Extranjero',
-        line = list(color = '#EAC43E', width = 2.5, dash = 'dot'),
-        marker = list(size = 8, color = '#EAC43E', symbol = 'square'),
-        yaxis = "y2",
+        line = list(color = '#EAC43E', width = 3),
+        marker = list(size = 10, color = '#EAC43E'),
         hovertemplate = paste0(
           '<b>%{x}</b><br>',
           'Padrón Extranjero: %{y:,.0f}<extra></extra>'
         )
       )
-    }
-    
-    # 4. Lista Extranjero
-    datos_con_lista_ext <- datos_anuales[!is.na(datos_anuales$lista_extranjero), ]
-    if (nrow(datos_con_lista_ext) > 0) {
+      
+      # 2. Lista Extranjero
       p <- p %>% add_trace(
-        data = datos_con_lista_ext,
+        data = datos_extranjero,
         x = ~año,
         y = ~lista_extranjero,
         type = 'scatter',
         mode = 'lines+markers',
         name = 'Lista Extranjero',
-        line = list(color = '#B3D491', width = 2.5, dash = 'dot'),
-        marker = list(size = 8, color = '#B3D491', symbol = 'square'),
-        yaxis = "y2",
+        line = list(color = '#B3D491', width = 3),
+        marker = list(size = 10, color = '#B3D491'),
         hovertemplate = paste0(
           '<b>%{x}</b><br>',
           'Lista Extranjero: %{y:,.0f}<extra></extra>'
         )
       )
-    }
-    
-    # ========== LAYOUT CON DOS EJES Y ==========
-    p <- p %>% layout(
-      title = list(
-        text = paste0("Evolución Anual (2017-", anio_actual(), ") - Nacional y Extranjero"),
-        font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
-        x = 0.5,
-        xanchor = "center"
-      ),
-      xaxis = list(
+      
+      # Layout
+      p <- p %>% layout(
         title = list(
-          text = "Año",
-          standoff = 20
-        ),
-        type = 'category'
-      ),
-      yaxis = list(
-        title = "Nacional (Electores)",
-        titlefont = list(color = "#003E66", size = 14),
-        tickfont = list(color = "#003E66"),
-        separatethousands = TRUE,
-        side = "left"
-      ),
-      yaxis2 = list(
-        title = "Extranjero (Electores)",
-        titlefont = list(color = "#518033", size = 14),
-        tickfont = list(color = "#518033"),
-        separatethousands = TRUE,
-        overlaying = "y",
-        side = "right"
-      ),
-      legend = list(
-        orientation = "h",
-        xanchor = "center",
-        x = 0.5,
-        y = -0.25
-      ),
-      margin = list(t = 120, b = 120, l = 90, r = 90),
-      hovermode = 'x unified',
-      annotations = list(
-        list(
-          text = generar_texto_alcance(input),
+          text = paste0("Evolución Anual (2020-", anio_actual(), ") - Extranjero"),
+          font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
           x = 0.5,
-          y = 1.12,
-          xref = "paper",
-          yref = "paper",
-          xanchor = "center",
-          yanchor = "top",
-          showarrow = FALSE,
-          font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
-          align = "center"
+          xanchor = "center"
         ),
-        list(
-          text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-          x = 0.5,
-          y = -0.40,
-          xref = "paper",
-          yref = "paper",
-          xanchor = "center",
-          yanchor = "top",
-          showarrow = FALSE,
-          font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
-          align = "center"
+        xaxis = list(title = "Año", type = 'category'),
+        yaxis = list(title = "Número de Electores", separatethousands = TRUE),
+        legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
+        margin = list(t = 120, b = 120, l = 90, r = 50),
+        hovermode = 'x unified',
+        annotations = list(
+          list(
+            text = generar_texto_alcance(input),
+            x = 0.5, y = 1.12,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
+            align = "center"
+          ),
+          list(
+            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            x = 0.5, y = -0.30,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
+            align = "center"
+          )
         )
       )
-    )
-    
-    message("✅ Gráfico 2: Evolución anual con eje Y dual renderizado")
-    return(p)
+      
+      message("✅ Gráfico 2: Evolución anual Extranjero renderizado")
+      return(p)
+    }
   })
   
   # ========== GRÁFICA 3: EVOLUCIÓN ANUAL + DESGLOSE POR SEXO ==========
   output$grafico_evolucion_anual_sexo <- renderPlotly({
     req(input$tipo_corte == "historico")
+    req(input$ambito_datos)
     
     datos_anuales <- datos_anuales_completos()
     
@@ -1041,6 +1190,24 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                  annotations = list(
                    list(
                      text = "No hay datos disponibles",
+                     xref = "paper", yref = "paper",
+                     x = 0.5, y = 0.5,
+                     showarrow = FALSE,
+                     font = list(size = 14, color = "#666")
+                   )
+                 )
+               ))
+    }
+    
+    # Solo disponible para Nacional
+    if (input$ambito_datos == "extranjero") {
+      return(plot_ly() %>%
+               layout(
+                 xaxis = list(visible = FALSE),
+                 yaxis = list(visible = FALSE),
+                 annotations = list(
+                   list(
+                     text = "Desglose por sexo no disponible para ámbito Extranjero",
                      xref = "paper", yref = "paper",
                      x = 0.5, y = 0.5,
                      showarrow = FALSE,
@@ -1134,54 +1301,37 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       )
     )
     
-    # Layout con alcance
+    # Layout
     p <- p %>% layout(
       title = list(
-        text = paste0("Evolución Anual por Sexo (2017-", anio_actual(), ")"),
+        text = paste0("Evolución Anual por Sexo (2017-", anio_actual(), ") - Nacional"),
         font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
         x = 0.5,
         xanchor = "center"
       ),
-      xaxis = list(
-        title = "Año",
-        type = 'category'
-      ),
-      yaxis = list(
-        title = "Número de Electores",
-        separatethousands = TRUE
-      ),
-      legend = list(
-        orientation = "h",
-        xanchor = "center",
-        x = 0.5,
-        y = -0.15
-      ),
-      margin = list(t = 120, b = 100, l = 80, r = 50),
+      xaxis = list(title = "Año", type = 'category'),
+      yaxis = list(title = "Número de Electores", separatethousands = TRUE),
+      legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
+      margin = list(t = 120, b = 120, l = 90, r = 50),
       hovermode = 'x unified',
       annotations = list(
         list(
           text = generar_texto_alcance(input),
-          x = 0.5,
-          y = 1.12,
-          xref = "paper",
-          yref = "paper",
-          xanchor = "center",
-          yanchor = "top",
+          x = 0.5, y = 1.12,
+          xref = "paper", yref = "paper",
+          xanchor = "center", yanchor = "top",
           showarrow = FALSE,
           font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
           align = "center"
         ),
         list(
           text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-          x = 0.0,
-          y = -0.25,
-          xref = "paper",
-          yref = "paper",
-          xanchor = "left",
-          yanchor = "top",
+          x = 0.5, y = -0.30,
+          xref = "paper", yref = "paper",
+          xanchor = "center", yanchor = "top",
           showarrow = FALSE,
           font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
-          align = "left"
+          align = "center"
         )
       )
     )
@@ -1193,6 +1343,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
   # ========== GRÁFICA 4: EVOLUCIÓN MENSUAL DEL AÑO SELECCIONADO ==========
   output$grafico_evolucion_year <- renderPlotly({
     req(input$tipo_corte == "historico")
+    req(input$ambito_datos)
     
     datos_completos <- datos_historicos_year()
     
@@ -1216,101 +1367,183 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     # Obtener año de los datos
     year_datos <- format(datos_completos$fecha[1], "%Y")
     
-    # Crear gráfico
-    p <- plot_ly()
-    
-    # Línea Padrón Electoral
-    p <- p %>% add_trace(
-      data = datos_completos,
-      x = ~fecha,
-      y = ~padron_electoral,
-      type = 'scatter',
-      mode = 'lines+markers',
-      name = 'Padrón Electoral',
-      line = list(color = '#44559B', width = 3),
-      marker = list(size = 8, color = '#44559B'),
-      hovertemplate = paste0(
-        '<b>%{x|%B %Y}</b><br>',
-        'Padrón: %{y:,.0f}<extra></extra>'
-      )
-    )
-    
-    # Línea Lista Nominal
-    p <- p %>% add_trace(
-      data = datos_completos,
-      x = ~fecha,
-      y = ~lista_nominal,
-      type = 'scatter',
-      mode = 'lines+markers',
-      name = 'Lista Nominal',
-      line = list(color = '#C0311A', width = 3),
-      marker = list(size = 8, color = '#C0311A'),
-      hovertemplate = paste0(
-        '<b>%{x|%B %Y}</b><br>',
-        'Lista: %{y:,.0f}<extra></extra>'
-      )
-    )
-    
-    # Layout con alcance
-    p <- p %>% layout(
-      title = list(
-        text = paste0("Evolución Mensual ", year_datos, " - Padrón Electoral y Lista Nominal"),
-        font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
-        x = 0.5,
-        xanchor = "center"
-      ),
-      xaxis = list(
-        title = "",
-        type = 'date',
-        tickformat = "%b"
-      ),
-      yaxis = list(
-        title = "Número de Electores",
-        separatethousands = TRUE
-      ),
-      legend = list(
-        orientation = "h",
-        xanchor = "center",
-        x = 0.5,
-        y = -0.15
-      ),
-      margin = list(t = 120, b = 100, l = 80, r = 50),
-      hovermode = 'x unified',
-      annotations = list(
-        list(
-          text = generar_texto_alcance(input),
-          x = 0.5,
-          y = 1.12,
-          xref = "paper",
-          yref = "paper",
-          xanchor = "center",
-          yanchor = "top",
-          showarrow = FALSE,
-          font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
-          align = "center"
-        ),
-        list(
-          text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-          x = 0.0,
-          y = -0.25,
-          xref = "paper",
-          yref = "paper",
-          xanchor = "left",
-          yanchor = "top",
-          showarrow = FALSE,
-          font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
-          align = "left"
+    # ========== GRÁFICA NACIONAL ==========
+    if (input$ambito_datos == "nacional") {
+      
+      p <- plot_ly()
+      
+      # Padrón Nacional
+      p <- p %>% add_trace(
+        data = datos_completos,
+        x = ~fecha,
+        y = ~padron_nacional,
+        type = 'scatter',
+        mode = 'lines+markers',
+        name = 'Padrón Nacional',
+        line = list(color = '#003E66', width = 3),
+        marker = list(size = 8, color = '#003E66'),
+        hovertemplate = paste0(
+          '<b>%{x|%B %Y}</b><br>',
+          'Padrón Nacional: %{y:,.0f}<extra></extra>'
         )
       )
-    )
-    
-    message("✅ Gráfico 4: Evolución mensual del año ", year_datos, " renderizado")
-    return(p)
+      
+      # Lista Nacional
+      p <- p %>% add_trace(
+        data = datos_completos,
+        x = ~fecha,
+        y = ~lista_nacional,
+        type = 'scatter',
+        mode = 'lines+markers',
+        name = 'Lista Nacional',
+        line = list(color = '#AE0E35', width = 3),
+        marker = list(size = 8, color = '#AE0E35'),
+        hovertemplate = paste0(
+          '<b>%{x|%B %Y}</b><br>',
+          'Lista Nacional: %{y:,.0f}<extra></extra>'
+        )
+      )
+      
+      # Layout
+      p <- p %>% layout(
+        title = list(
+          text = paste0("Evolución Mensual ", year_datos, " - Nacional"),
+          font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
+          x = 0.5,
+          xanchor = "center"
+        ),
+        xaxis = list(title = "", type = 'date', tickformat = "%b"),
+        yaxis = list(title = "Número de Electores", separatethousands = TRUE),
+        legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
+        margin = list(t = 120, b = 120, l = 90, r = 50),
+        hovermode = 'x unified',
+        annotations = list(
+          list(
+            text = generar_texto_alcance(input),
+            x = 0.5, y = 1.12,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
+            align = "center"
+          ),
+          list(
+            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            x = 0.5, y = -0.30,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
+            align = "center"
+          )
+        )
+      )
+      
+      message("✅ Gráfico 4: Evolución mensual ", year_datos, " Nacional renderizado")
+      return(p)
+      
+    } else {
+      # ========== GRÁFICA EXTRANJERO ==========
+      
+      # Filtrar solo datos con extranjero
+      datos_extranjero <- datos_completos[!is.na(datos_completos$padron_extranjero) & 
+                                            !is.na(datos_completos$lista_extranjero), ]
+      
+      if (nrow(datos_extranjero) == 0) {
+        return(plot_ly() %>%
+                 layout(
+                   xaxis = list(visible = FALSE),
+                   yaxis = list(visible = FALSE),
+                   annotations = list(
+                     list(
+                       text = "Datos de extranjero no disponibles para este año",
+                       xref = "paper", yref = "paper",
+                       x = 0.5, y = 0.5,
+                       showarrow = FALSE,
+                       font = list(size = 14, color = "#666")
+                     )
+                   )
+                 ))
+      }
+      
+      p <- plot_ly()
+      
+      # Padrón Extranjero
+      p <- p %>% add_trace(
+        data = datos_extranjero,
+        x = ~fecha,
+        y = ~padron_extranjero,
+        type = 'scatter',
+        mode = 'lines+markers',
+        name = 'Padrón Extranjero',
+        line = list(color = '#EAC43E', width = 3),
+        marker = list(size = 8, color = '#EAC43E'),
+        hovertemplate = paste0(
+          '<b>%{x|%B %Y}</b><br>',
+          'Padrón Extranjero: %{y:,.0f}<extra></extra>'
+        )
+      )
+      
+      # Lista Extranjero
+      p <- p %>% add_trace(
+        data = datos_extranjero,
+        x = ~fecha,
+        y = ~lista_extranjero,
+        type = 'scatter',
+        mode = 'lines+markers',
+        name = 'Lista Extranjero',
+        line = list(color = '#B3D491', width = 3),
+        marker = list(size = 8, color = '#B3D491'),
+        hovertemplate = paste0(
+          '<b>%{x|%B %Y}</b><br>',
+          'Lista Extranjero: %{y:,.0f}<extra></extra>'
+        )
+      )
+      
+      # Layout
+      p <- p %>% layout(
+        title = list(
+          text = paste0("Evolución Mensual ", year_datos, " - Extranjero"),
+          font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
+          x = 0.5,
+          xanchor = "center"
+        ),
+        xaxis = list(title = "", type = 'date', tickformat = "%b"),
+        yaxis = list(title = "Número de Electores", separatethousands = TRUE),
+        legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
+        margin = list(t = 120, b = 120, l = 90, r = 50),
+        hovermode = 'x unified',
+        annotations = list(
+          list(
+            text = generar_texto_alcance(input),
+            x = 0.5, y = 1.12,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
+            align = "center"
+          ),
+          list(
+            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            x = 0.5, y = -0.30,
+            xref = "paper", yref = "paper",
+            xanchor = "center", yanchor = "top",
+            showarrow = FALSE,
+            font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
+            align = "center"
+          )
+        )
+      )
+      
+      message("✅ Gráfico 4: Evolución mensual ", year_datos, " Extranjero renderizado")
+      return(p)
+    }
   })
   
   # ========== GRÁFICA 5: EVOLUCIÓN MENSUAL DEL AÑO SELECCIONADO + SEXO ==========
   output$grafico_evolucion_year_sexo <- renderPlotly({
     req(input$tipo_corte == "historico")
+    req(input$ambito_datos)
     
     datos_completos <- datos_historicos_year()
     
@@ -1322,6 +1555,24 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                  annotations = list(
                    list(
                      text = "No hay datos disponibles",
+                     xref = "paper", yref = "paper",
+                     x = 0.5, y = 0.5,
+                     showarrow = FALSE,
+                     font = list(size = 14, color = "#666")
+                   )
+                 )
+               ))
+    }
+    
+    # Solo disponible para Nacional
+    if (input$ambito_datos == "extranjero") {
+      return(plot_ly() %>%
+               layout(
+                 xaxis = list(visible = FALSE),
+                 yaxis = list(visible = FALSE),
+                 annotations = list(
+                   list(
+                     text = "Desglose por sexo no disponible para ámbito Extranjero",
                      xref = "paper", yref = "paper",
                      x = 0.5, y = 0.5,
                      showarrow = FALSE,
@@ -1419,55 +1670,37 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       )
     )
     
-    # Layout con alcance
+    # Layout
     p <- p %>% layout(
       title = list(
-        text = paste0("Evolución Mensual ", year_datos, " por Sexo"),
+        text = paste0("Evolución Mensual ", year_datos, " por Sexo - Nacional"),
         font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
         x = 0.5,
         xanchor = "center"
       ),
-      xaxis = list(
-        title = "",
-        type = 'date',
-        tickformat = "%b"
-      ),
-      yaxis = list(
-        title = "Número de Electores",
-        separatethousands = TRUE
-      ),
-      legend = list(
-        orientation = "h",
-        xanchor = "center",
-        x = 0.5,
-        y = -0.15
-      ),
-      margin = list(t = 120, b = 100, l = 80, r = 50),
+      xaxis = list(title = "", type = 'date', tickformat = "%b"),
+      yaxis = list(title = "Número de Electores", separatethousands = TRUE),
+      legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
+      margin = list(t = 120, b = 120, l = 90, r = 50),
       hovermode = 'x unified',
       annotations = list(
         list(
           text = generar_texto_alcance(input),
-          x = 0.5,
-          y = 1.12,
-          xref = "paper",
-          yref = "paper",
-          xanchor = "center",
-          yanchor = "top",
+          x = 0.5, y = 1.12,
+          xref = "paper", yref = "paper",
+          xanchor = "center", yanchor = "top",
           showarrow = FALSE,
           font = list(size = 13, color = "#555555", family = "Arial, sans-serif"),
           align = "center"
         ),
         list(
           text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-          x = 0.0,
-          y = -0.25,
-          xref = "paper",
-          yref = "paper",
-          xanchor = "left",
-          yanchor = "top",
+          x = 0.5, y = -0.30,
+          xref = "paper", yref = "paper",
+          xanchor = "center", yanchor = "top",
           showarrow = FALSE,
           font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
-          align = "left"
+          align = "center"
         )
       )
     )
@@ -1485,6 +1718,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
   # ========== GRÁFICO PRINCIPAL SEMANALES (BARRAS) ==========
   output$`main-grafico_barras` <- renderPlotly({
     req(input$tipo_corte == "semanal")
+    req(input$ambito_datos)
     req(combinacion_valida())
     
     datos <- datos_columnas()
@@ -1511,13 +1745,63 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     df <- datos$datos
     desglose_actual <- isolate(input$desglose) %||% "Sexo"
     
-    message("📊 Renderizando gráfico semanal: ", desglose_actual)
+    message("📊 Renderizando gráfico semanal: ", desglose_actual, " - Ámbito: ", input$ambito_datos)
+    
+    # ========== FILTRAR POR ÁMBITO ==========
+    if (input$ambito_datos == "nacional") {
+      # Usar columnas nacionales
+      col_padron <- "padron_nacional"
+      col_lista <- "lista_nacional"
+      titulo_base <- "Nacional"
+    } else {
+      # Usar columnas extranjero
+      col_padron <- "padron_extranjero"
+      col_lista <- "lista_extranjero"
+      titulo_base <- "Extranjero"
+      
+      # Verificar que existan columnas
+      if (!col_padron %in% colnames(df) || !col_lista %in% colnames(df)) {
+        return(plot_ly() %>%
+                 layout(
+                   xaxis = list(visible = FALSE),
+                   yaxis = list(visible = FALSE),
+                   annotations = list(
+                     list(
+                       text = "Datos de extranjero no disponibles para este corte",
+                       xref = "paper", yref = "paper",
+                       x = 0.5, y = 0.5,
+                       showarrow = FALSE,
+                       font = list(size = 14, color = "#666")
+                     )
+                   )
+                 ))
+      }
+    }
     
     # ========== GRÁFICA POR SEXO ==========
     if (desglose_actual == "Sexo") {
       
-      cols_sexo <- c("padron_nacional_hombres", "padron_nacional_mujeres", 
-                     "lista_nacional_hombres", "lista_nacional_mujeres")
+      # Definir columnas según ámbito
+      if (input$ambito_datos == "nacional") {
+        cols_sexo <- c("padron_nacional_hombres", "padron_nacional_mujeres", 
+                       "lista_nacional_hombres", "lista_nacional_mujeres")
+      } else {
+        # Para extranjero, normalmente no hay desglose por sexo
+        return(plot_ly() %>%
+                 layout(
+                   xaxis = list(visible = FALSE),
+                   yaxis = list(visible = FALSE),
+                   annotations = list(
+                     list(
+                       text = "Desglose por sexo no disponible para ámbito Extranjero",
+                       xref = "paper", yref = "paper",
+                       x = 0.5, y = 0.5,
+                       showarrow = FALSE,
+                       font = list(size = 14, color = "#666")
+                     )
+                   )
+                 ))
+      }
       
       if (all(cols_sexo %in% colnames(df))) {
         padron_h <- sum(df$padron_nacional_hombres, na.rm = TRUE)
@@ -1544,7 +1828,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         ) %>%
           layout(
             title = list(
-              text = "Padrón Electoral y Lista Nominal por Sexo",
+              text = paste0("Padrón Electoral y Lista Nominal por Sexo - ", titulo_base),
               font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
               x = 0.5, xanchor = "center"
             ),
@@ -1577,8 +1861,8 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         
       } else {
         # SIN DESGLOSE - MOSTRAR TOTALES
-        total_padron <- sum(df$padron_nacional, na.rm = TRUE)
-        total_lista <- sum(df$lista_nacional, na.rm = TRUE)
+        total_padron <- sum(df[[col_padron]], na.rm = TRUE)
+        total_lista <- sum(df[[col_lista]], na.rm = TRUE)
         
         datos_grafico <- data.frame(
           Tipo = c("Padrón Electoral", "Lista Nominal"),
@@ -1586,18 +1870,25 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           stringsAsFactors = FALSE
         )
         
+        # Colores según ámbito
+        colores <- if (input$ambito_datos == "nacional") {
+          c("#003E66", "#AE0E35")
+        } else {
+          c("#EAC43E", "#B3D491")
+        }
+        
         p <- plot_ly(
           data = datos_grafico,
           x = ~Tipo,
           y = ~Cantidad,
           type = 'bar',
-          marker = list(color = c("#44559B", "#C0311A")),
+          marker = list(color = colores),
           text = ~paste0(format(Cantidad, big.mark = ","), " electores"),
           hovertemplate = '<b>%{x}</b><br>%{text}<extra></extra>'
         ) %>%
           layout(
             title = list(
-              text = "Padrón Electoral y Lista Nominal",
+              text = paste0("Padrón Electoral y Lista Nominal - ", titulo_base),
               font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
               x = 0.5, xanchor = "center"
             ),
@@ -1669,21 +1960,22 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         )
         datos_grafico <- datos_grafico[order(datos_grafico$Grupo), ]
         
+        color_edad <- if (input$ambito_datos == "nacional") "#C0311A" else "#B3D491"
+        
         p <- plot_ly(
           data = datos_grafico,
           x = ~Grupo,
           y = ~Lista_Nominal,
           type = 'bar',
-          marker = list(color = "#C0311A"),
+          marker = list(color = color_edad),
           text = ~paste0(format(Lista_Nominal, big.mark = ","), " electores"),
           hovertemplate = '<b>%{x}</b><br>%{text}<extra></extra>'
         ) %>%
           layout(
-            title = list(
-              text = "Lista Nominal por Grupo de Edad",
-              font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
-              x = 0.5,
-              xanchor = "center"
+            title = list(text = paste0("Lista Nominal por Grupo de Edad - ", titulo_base),
+                         font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
+                         x = 0.5,
+                         xanchor = "center"
             ),
             xaxis = list(title = "Grupo de Edad"),
             yaxis = list(
@@ -1734,12 +2026,12 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       
       # ========== GRÁFICA POR ENTIDAD DE ORIGEN ==========
       
-      if ("nombre_entidad" %in% colnames(df) && "lista_nacional" %in% colnames(df)) {
+      if ("nombre_entidad" %in% colnames(df) && col_lista %in% colnames(df)) {
         
         datos_grafico <- df %>%
           group_by(Entidad = nombre_entidad) %>%
           summarise(
-            Lista_Nominal = sum(lista_nacional, na.rm = TRUE),
+            Lista_Nominal = sum(.data[[col_lista]], na.rm = TRUE),
             .groups = 'drop'
           ) %>%
           arrange(desc(Lista_Nominal)) %>%
@@ -1747,19 +2039,21 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         
         datos_grafico <- as.data.frame(datos_grafico)
         
+        color_entidad <- if (input$ambito_datos == "nacional") "#44559B" else "#EAC43E"
+        
         p <- plot_ly(
           data = datos_grafico,
           y = ~reorder(Entidad, Lista_Nominal),
           x = ~Lista_Nominal,
           type = 'bar',
           orientation = 'h',
-          marker = list(color = "#44559B"),
+          marker = list(color = color_entidad),
           text = ~paste0(format(Lista_Nominal, big.mark = ","), " electores"),
           hovertemplate = '<b>%{y}</b><br>%{text}<extra></extra>'
         ) %>%
           layout(
             title = list(
-              text = "Top 10 Entidades por Lista Nominal",
+              text = paste0("Top 10 Entidades por Lista Nominal - ", titulo_base),
               font = list(size = 18, color = "#333", family = "Arial, sans-serif"),
               x = 0.5,
               xanchor = "center"
@@ -1826,13 +2120,14 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         )
     }
     
-    message("✅ Gráfico semanal renderizado: ", desglose_actual)
+    message("✅ Gráfico semanal renderizado: ", desglose_actual, " - ", titulo_base)
     return(p)
   })
   
   # ========== GRÁFICO DE TASA DE INCLUSIÓN (SOLO SEMANALES) ==========
   output$`main-tasa_inclusion_plot` <- renderPlotly({
     req(input$tipo_corte == "semanal")
+    req(input$ambito_datos)
     req(combinacion_valida())
     
     datos <- datos_columnas()
@@ -1843,12 +2138,41 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     
     df <- datos$datos
     
-    if (!all(c("padron_nacional", "lista_nacional") %in% colnames(df))) {
-      return(NULL)
+    # ========== SELECCIONAR COLUMNAS SEGÚN ÁMBITO ==========
+    if (input$ambito_datos == "nacional") {
+      col_padron <- "padron_nacional"
+      col_lista <- "lista_nacional"
+      titulo_ambito <- "Nacional"
+      color_lista <- "#4CAF50"
+      color_diferencia <- "#FFC107"
+    } else {
+      col_padron <- "padron_extranjero"
+      col_lista <- "lista_extranjero"
+      titulo_ambito <- "Extranjero"
+      color_lista <- "#8BC34A"
+      color_diferencia <- "#FFB74D"
+      
+      # Verificar que existan columnas
+      if (!col_padron %in% colnames(df) || !col_lista %in% colnames(df)) {
+        return(plot_ly() %>%
+                 layout(
+                   xaxis = list(visible = FALSE),
+                   yaxis = list(visible = FALSE),
+                   annotations = list(
+                     list(
+                       text = "Datos de extranjero no disponibles para este corte",
+                       xref = "paper", yref = "paper",
+                       x = 0.5, y = 0.5,
+                       showarrow = FALSE,
+                       font = list(size = 14, color = "#666")
+                     )
+                   )
+                 ))
+      }
     }
     
-    total_padron <- sum(df$padron_nacional, na.rm = TRUE)
-    total_lista <- sum(df$lista_nacional, na.rm = TRUE)
+    total_padron <- sum(df[[col_padron]], na.rm = TRUE)
+    total_lista <- sum(df[[col_lista]], na.rm = TRUE)
     
     if (total_padron == 0) {
       return(NULL)
@@ -1865,9 +2189,6 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       valor = c(tasa_inclusion, tasa_exclusion),
       stringsAsFactors = FALSE
     )
-    
-    color_lista <- "#4CAF50"
-    color_diferencia <- "#FFC107"
     
     p <- plot_ly(
       data = datos_grafico,
@@ -1887,7 +2208,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     ) %>%
       layout(
         title = list(
-          text = "Tasa de Inclusión en Lista Nominal",
+          text = paste0("Tasa de Inclusión en Lista Nominal - ", titulo_ambito),
           x = 0.5,
           xanchor = "center",
           y = 0.95,
@@ -1931,8 +2252,83 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         showlegend = FALSE
       )
     
-    message("✅ Gráfico de tasa de inclusión renderizado")
+    message("✅ Gráfico de tasa de inclusión renderizado - ", titulo_ambito)
     return(p)
+  })
+  
+  # ========== MODAL: INFORMACIÓN METODOLOGÍA GRÁFICA 1 ==========
+  observeEvent(input$info_grafica1, {
+    showModal(modalDialog(
+      title = tags$div(
+        style = "color: #003E66; font-weight: bold; font-size: 18px;",
+        icon("chart-line"), " Metodología de Proyección"
+      ),
+      tags$div(
+        style = "font-size: 14px; line-height: 1.8;",
+        
+        tags$h5(
+          style = "color: #44559B; font-weight: bold; margin-top: 15px;",
+          "¿Cómo se calcula la proyección?"
+        ),
+        
+        tags$p(
+          "La proyección mostrada en esta gráfica utiliza un ", 
+          tags$strong("modelo de tasa de crecimiento mensual promedio"), 
+          " basado en los datos históricos disponibles del año en curso."
+        ),
+        
+        tags$h5(
+          style = "color: #44559B; font-weight: bold; margin-top: 15px;",
+          "Pasos del cálculo:"
+        ),
+        
+        tags$ol(
+          style = "padding-left: 20px;",
+          tags$li(tags$strong("Datos base:"), " Se toman todos los cortes mensuales disponibles del año actual."),
+          tags$li(tags$strong("Tasa de crecimiento:"), " Se calcula la tasa de crecimiento mensual promedio entre el primer y último mes disponible."),
+          tags$li(tags$strong("Proyección:"), " Se aplica esta tasa a los meses restantes hasta diciembre del año en curso."),
+          tags$li(tags$strong("Visualización:"), " Las líneas punteadas representan los valores proyectados.")
+        ),
+        
+        tags$h5(
+          style = "color: #44559B; font-weight: bold; margin-top: 15px;",
+          "Fórmula aplicada:"
+        ),
+        
+        tags$div(
+          style = "background-color: #f8f9fa; padding: 15px; border-left: 4px solid #003E66; margin: 10px 0; font-family: 'Courier New', monospace;",
+          tags$code("Tasa mensual = (Valor final / Valor inicial)^(1 / (n-1)) - 1"),
+          tags$br(),
+          tags$code("Valor proyectado = Último valor × (1 + tasa)^meses")
+        ),
+        
+        tags$h5(
+          style = "color: #AE0E35; font-weight: bold; margin-top: 15px;",
+          icon("exclamation-triangle"), " Consideraciones importantes:"
+        ),
+        
+        tags$ul(
+          style = "padding-left: 20px;",
+          tags$li("La proyección asume un ", tags$strong("crecimiento constante"), " basado en tendencias históricas."),
+          tags$li("Es una ", tags$strong("estimación estadística"), " y puede variar con respecto a los valores reales."),
+          tags$li("Se recomienda ", tags$strong("actualizar regularmente"), " con los datos oficiales del INE."),
+          tags$li("Los valores proyectados se distinguen visualmente con ", tags$strong("líneas punteadas"), ".")
+        ),
+        
+        tags$hr(style = "margin: 20px 0;"),
+        
+        tags$p(
+          style = "font-size: 12px; color: #666; text-align: center;",
+          icon("info-circle"), " Esta proyección es una herramienta de referencia y análisis. ",
+          "Los datos oficiales son publicados mensualmente por el INE."
+        )
+      ),
+      
+      easyClose = TRUE,
+      fade = TRUE,
+      size = "l",
+      footer = modalButton("Cerrar")
+    ))
   })
   
   message("✅ Módulo lista_nominal_server_graficas inicializado correctamente")
