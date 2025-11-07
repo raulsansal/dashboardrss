@@ -606,24 +606,56 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     tasa_mensual_lista <- ((valor_final / valor_inicial) ^ (1 / (n - 1))) - 1
     tasa_mensual_padron <- ((padron_final / padron_inicial) ^ (1 / (n - 1))) - 1
     
-    # Crear fechas proyectadas
+    # Crear fechas proyectadas - FORZAR ÚLTIMO DÍA DEL MES
     ultima_fecha <- max(datos$fecha)
-    fechas_proyectadas <- seq(ultima_fecha, by = "month", length.out = meses_proyectar + 1)[-1]
+    anio_base <- as.integer(format(ultima_fecha, "%Y"))
+    mes_base <- as.integer(format(ultima_fecha, "%m"))
     
-    # Proyectar valores
-    proyecciones <- data.frame(
-      fecha = fechas_proyectadas,
-      lista_proyectada = numeric(meses_proyectar),
-      padron_proyectado = numeric(meses_proyectar),
-      stringsAsFactors = FALSE
-    )
+    # Crear lista para almacenar fechas
+    fechas_proyectadas <- list()
     
     for (i in 1:meses_proyectar) {
-      proyecciones$lista_proyectada[i] <- valor_final * ((1 + tasa_mensual_lista) ^ i)
-      proyecciones$padron_proyectado[i] <- padron_final * ((1 + tasa_mensual_padron) ^ i)
+      mes_proyectado <- mes_base + i
+      anio_proyectado <- anio_base
+      
+      # Ajustar si pasa de diciembre
+      if (mes_proyectado > 12) {
+        anio_proyectado <- anio_base + floor((mes_proyectado - 1) / 12)
+        mes_proyectado <- ((mes_proyectado - 1) %% 12) + 1
+      }
+      
+      # Obtener último día del mes
+      # Crear fecha del día 1 del mes siguiente, luego restar 1 día
+      if (mes_proyectado == 12) {
+        ultimo_dia <- as.Date(paste0(anio_proyectado + 1, "-01-01")) - 1
+      } else {
+        ultimo_dia <- as.Date(paste0(anio_proyectado, "-", sprintf("%02d", mes_proyectado + 1), "-01")) - 1
+      }
+      
+      fechas_proyectadas[[i]] <- ultimo_dia
     }
     
-    proyecciones$tipo <- "Proyección"
+    # Convertir lista a vector de fechas
+    fechas_proyectadas <- do.call(c, fechas_proyectadas)
+    
+    message("📅 [PROYECCIÓN] Fechas generadas: ", paste(fechas_proyectadas, collapse = ", "))
+    
+    # Proyectar valores
+    lista_proyectada <- numeric(meses_proyectar)
+    padron_proyectado <- numeric(meses_proyectar)
+    
+    for (i in 1:meses_proyectar) {
+      lista_proyectada[i] <- valor_final * ((1 + tasa_mensual_lista) ^ i)
+      padron_proyectado[i] <- padron_final * ((1 + tasa_mensual_padron) ^ i)
+    }
+    
+    proyecciones <- data.frame(
+      fecha = fechas_proyectadas,
+      lista_proyectada = lista_proyectada,
+      padron_proyectado = padron_proyectado,
+      tipo = "Proyección",
+      stringsAsFactors = FALSE
+    )
     
     message("✅ Proyección calculada: tasa mensual lista = ", round(tasa_mensual_lista * 100, 4), "%")
     
@@ -638,6 +670,15 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
     req(input$ambito_datos)
     
     datos_completos <- datos_historicos_year()
+    
+    # Obtener año de los datos (del último registro disponible)
+    year_datos <- format(max(datos_completos$fecha), "%Y")
+    
+    # ========== DEBUG: IMPRIMIR FECHAS REALES ==========
+    message("📅 [DEBUG] Fechas en datos_completos:")
+    message(paste(datos_completos$fecha, collapse = ", "))
+    message("📅 [DEBUG] Total de fechas: ", nrow(datos_completos))
+    # ========== FIN DEBUG ==========
     
     if (is.null(datos_completos) || nrow(datos_completos) == 0) {
       return(plot_ly() %>%
@@ -745,14 +786,18 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       }
       
       # ========== CONFIGURACIÓN DEL EJE X CORREGIDA ==========
-      # Crear secuencia de fechas para todos los meses del año
-      fechas_completas <- seq(as.Date(paste0(year_datos, "-01-01")), 
-                              as.Date(paste0(year_datos, "-12-01")), 
-                              by = "month")
+      # Combinar fechas reales + fechas proyectadas
+      fechas_reales <- datos_completos$fecha
       
-      # Etiquetas de meses en español
-      meses_espanol <- c("Ene", "Feb", "Mar", "Abr", "May", "Jun", 
-                         "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+      # Si hay proyección, combinar fechas
+      if (!is.null(proyeccion) && nrow(proyeccion) > 0) {
+        fechas_completas_eje <- c(fechas_reales, proyeccion$fecha)
+      } else {
+        fechas_completas_eje <- fechas_reales
+      }
+      
+      # Generar etiquetas para todas las fechas
+      etiquetas_meses <- format(fechas_completas_eje, "%b")
       
       # Layout con eje X corregido
       p <- p %>% layout(
@@ -766,10 +811,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           title = "",
           type = 'date',
           tickmode = "array",
-          tickvals = fechas_completas,
-          ticktext = meses_espanol,
+          tickvals = fechas_completas_eje,  # ← INCLUYE datos reales + proyección
+          ticktext = etiquetas_meses,
           tickangle = 0,
-          range = c(as.Date(paste0(year_datos, "-01-01")), 
+          range = c(min(fechas_reales) - 5, 
                     as.Date(paste0(year_datos, "-12-31")))
         ),
         yaxis = list(
@@ -912,14 +957,18 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       }
       
       # ========== CONFIGURACIÓN DEL EJE X CORREGIDA ==========
-      # Crear secuencia de fechas para todos los meses del año
-      fechas_completas <- seq(as.Date(paste0(year_datos, "-01-01")), 
-                              as.Date(paste0(year_datos, "-12-01")), 
-                              by = "month")
+      # Combinar fechas reales + fechas proyectadas
+      fechas_reales <- datos_extranjero$fecha
       
-      # Etiquetas de meses en español
-      meses_espanol <- c("Ene", "Feb", "Mar", "Abr", "May", "Jun", 
-                         "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+      # Si hay proyección, combinar fechas
+      if (!is.null(proyeccion) && nrow(proyeccion) > 0) {
+        fechas_completas_eje <- c(fechas_reales, proyeccion$fecha)
+      } else {
+        fechas_completas_eje <- fechas_reales
+      }
+      
+      # Generar etiquetas para todas las fechas
+      etiquetas_meses <- format(fechas_completas_eje, "%b")
       
       # Layout con eje X corregido
       p <- p %>% layout(
@@ -933,10 +982,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           title = "",
           type = 'date',
           tickmode = "array",
-          tickvals = fechas_completas,
-          ticktext = meses_espanol,
+          tickvals = fechas_completas_eje,  # ← INCLUYE datos reales + proyección
+          ticktext = etiquetas_meses,
           tickangle = 0,
-          range = c(as.Date(paste0(year_datos, "-01-01")), 
+          range = c(min(fechas_reales) - 5, 
                     as.Date(paste0(year_datos, "-12-31")))
         ),
         yaxis = list(
@@ -2284,9 +2333,10 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         
         tags$ol(
           style = "padding-left: 20px;",
-          tags$li(tags$strong("Datos base:"), " Se toman todos los cortes mensuales disponibles del año actual."),
+          tags$li(tags$strong("Datos base:"), " Se toman todos los cortes mensuales disponibles del año actual (último día de cada mes)."),
           tags$li(tags$strong("Tasa de crecimiento:"), " Se calcula la tasa de crecimiento mensual promedio entre el primer y último mes disponible."),
           tags$li(tags$strong("Proyección:"), " Se aplica esta tasa a los meses restantes hasta diciembre del año en curso."),
+          tags$li(tags$strong("Fechas proyectadas:"), " Cada proyección corresponde al último día del mes respectivo (ej: 30/sep, 31/oct, 30/nov, 31/dic)."),
           tags$li(tags$strong("Visualización:"), " Las líneas punteadas representan los valores proyectados.")
         ),
         
@@ -2299,7 +2349,34 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           style = "background-color: #f8f9fa; padding: 15px; border-left: 4px solid #003E66; margin: 10px 0; font-family: 'Courier New', monospace;",
           tags$code("Tasa mensual = (Valor final / Valor inicial)^(1 / (n-1)) - 1"),
           tags$br(),
-          tags$code("Valor proyectado = Último valor × (1 + tasa)^meses")
+          tags$code("Valor proyectado(mes i) = Último valor × (1 + tasa)^i"),
+          tags$br(),
+          tags$code("Fecha proyectada(mes i) = Último día del mes i")
+        ),
+        
+        tags$h5(
+          style = "color: #44559B; font-weight: bold; margin-top: 15px;",
+          icon("calculator"), " Ejemplo de cálculo:"
+        ),
+        
+        tags$div(
+          style = "background-color: #f0f8ff; padding: 12px; border-radius: 5px; margin: 10px 0;",
+          tags$p(
+            style = "margin: 5px 0;",
+            tags$strong("Supongamos:"), " Lista Nominal enero = 95,000,000 | agosto = 97,500,000"
+          ),
+          tags$p(
+            style = "margin: 5px 0;",
+            "Tasa mensual = (97,500,000 / 95,000,000)^(1/7) - 1 = 0.378% mensual"
+          ),
+          tags$p(
+            style = "margin: 5px 0;",
+            "Proyección septiembre (30/sep) = 97,500,000 × (1.00378)^1 = 97,868,550"
+          ),
+          tags$p(
+            style = "margin: 5px 0;",
+            "Proyección octubre (31/oct) = 97,500,000 × (1.00378)^2 = 98,239,019"
+          )
         ),
         
         tags$h5(
@@ -2309,9 +2386,11 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         
         tags$ul(
           style = "padding-left: 20px;",
-          tags$li("La proyección asume un ", tags$strong("crecimiento constante"), " basado en tendencias históricas."),
+          tags$li("La proyección asume un ", tags$strong("crecimiento constante"), " basado en tendencias históricas del año."),
           tags$li("Es una ", tags$strong("estimación estadística"), " y puede variar con respecto a los valores reales."),
-          tags$li("Se recomienda ", tags$strong("actualizar regularmente"), " con los datos oficiales del INE."),
+          tags$li("Se proyecta hasta ", tags$strong("diciembre del año en curso"), " únicamente."),
+          tags$li("Las fechas proyectadas corresponden al ", tags$strong("último día de cada mes"), " para mantener consistencia con los datos históricos del INE."),
+          tags$li("Se recomienda ", tags$strong("actualizar regularmente"), " con los datos oficiales del INE conforme se publiquen."),
           tags$li("Los valores proyectados se distinguen visualmente con ", tags$strong("líneas punteadas"), ".")
         ),
         
@@ -2320,7 +2399,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         tags$p(
           style = "font-size: 12px; color: #666; text-align: center;",
           icon("info-circle"), " Esta proyección es una herramienta de referencia y análisis. ",
-          "Los datos oficiales son publicados mensualmente por el INE."
+          "Los datos oficiales son publicados mensualmente por el INE y prevalecen sobre cualquier estimación."
         )
       ),
       
