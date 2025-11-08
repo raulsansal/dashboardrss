@@ -1617,6 +1617,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
   # ========== GRÁFICA 4: EVOLUCIÓN MENSUAL DEL AÑO SELECCIONADO ==========
   output$grafico_evolucion_year <- renderPlotly({
     req(input$tipo_corte == "historico")
+    req(input$btn_consultar > 0)  # ← NUEVO: Solo cargar si usuario consultó
     req(input$ambito_datos)
     
     datos_completos <- datos_historicos_year()
@@ -1723,6 +1724,9 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       datos_extranjero <- datos_completos[!is.na(datos_completos$padron_extranjero) & 
                                             !is.na(datos_completos$lista_extranjero), ]
       
+      # Obtener año de la consulta para mensaje personalizado
+      year_consultado <- format(datos_completos$fecha[1], "%Y")
+      
       if (nrow(datos_extranjero) == 0) {
         return(plot_ly() %>%
                  layout(
@@ -1730,7 +1734,8 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                    yaxis = list(visible = FALSE),
                    annotations = list(
                      list(
-                       text = "Datos de extranjero no disponibles para este año",
+                       text = paste0("Datos de extranjero no disponibles para el año ", year_consultado, 
+                                     ".<br>Los datos de extranjero están disponibles desde 2020."),
                        xref = "paper", yref = "paper",
                        x = 0.5, y = 0.5,
                        showarrow = FALSE,
@@ -1817,6 +1822,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
   # ========== GRÁFICA 5: EVOLUCIÓN MENSUAL DEL AÑO SELECCIONADO + SEXO ==========
   output$grafico_evolucion_year_sexo <- renderPlotly({
     req(input$tipo_corte == "historico")
+    req(input$btn_consultar > 0)  # ← NUEVO: Solo cargar si usuario consultó
     req(input$ambito_datos)
     
     datos_completos <- datos_historicos_year()
