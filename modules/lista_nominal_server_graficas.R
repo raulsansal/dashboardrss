@@ -866,7 +866,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             align = "center"
           ),
           list(
-            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
             x = 0.5, y = -0.35,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
@@ -1037,7 +1037,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             align = "center"
           ),
           list(
-            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
             x = 0.5, y = -0.35,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
@@ -1122,7 +1122,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           x = 0.5,
           xanchor = "center"
         ),
-        xaxis = list(title = "Año", type = 'category'),
+        xaxis = list(title = "", type = 'category'),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
         legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
         margin = list(t = 120, b = 120, l = 90, r = 50),
@@ -1138,8 +1138,8 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             align = "center"
           ),
           list(
-            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-            x = 0.5, y = -0.30,
+            text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
+            x = 0.5, y = -0.35,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
             showarrow = FALSE,
@@ -1218,7 +1218,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           x = 0.5,
           xanchor = "center"
         ),
-        xaxis = list(title = "Año", type = 'category'),
+        xaxis = list(title = "", type = 'category'),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
         legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
         margin = list(t = 120, b = 120, l = 90, r = 50),
@@ -1234,8 +1234,8 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             align = "center"
           ),
           list(
-            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-            x = 0.5, y = -0.30,
+            text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
+            x = 0.5, y = -0.35,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
             showarrow = FALSE,
@@ -1372,7 +1372,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           x = 0.5,
           xanchor = "center"
         ),
-        xaxis = list(title = "Año", type = 'category'),
+        xaxis = list(title = "", type = 'category'),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
         legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
         margin = list(t = 120, b = 120, l = 90, r = 50),
@@ -1388,8 +1388,8 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             align = "center"
           ),
           list(
-            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-            x = 0.5, y = -0.30,
+            text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
+            x = 0.5, y = -0.35,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
             showarrow = FALSE,
@@ -1478,45 +1478,13 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         )
       }
       
-      # ========== GRAFICAR AÑOS CON SEXO (4 LÍNEAS) ==========
+      # ========== GRAFICAR AÑOS CON SEXO (4 LÍNEAS) - ORDEN CORREGIDO ==========
       if (length(años_con_sexo) > 0) {
         datos_con_sexo <- datos_extranjero[datos_extranjero$año %in% años_con_sexo, ]
         
-        # ========== ORDEN: M → M → H → H ==========
+        # ========== ORDEN CORREGIDO: H → H → M → M (coincide con orden visual descendente) ==========
         
-        # 1. Padrón Mujeres
-        p <- p %>% add_trace(
-          data = datos_con_sexo,
-          x = ~año,
-          y = ~padron_extranjero_mujeres,
-          type = 'scatter',
-          mode = 'lines+markers',
-          name = 'Padrón Mujeres',
-          line = list(color = '#F5CA45', width = 2.5),
-          marker = list(size = 8, color = '#F5CA45'),
-          hovertemplate = paste0(
-            '<b>%{x}</b><br>',
-            'Padrón M: %{y:,.0f}<extra></extra>'
-          )
-        )
-        
-        # 2. Lista Mujeres
-        p <- p %>% add_trace(
-          data = datos_con_sexo,
-          x = ~año,
-          y = ~lista_extranjero_mujeres,
-          type = 'scatter',
-          mode = 'lines+markers',
-          name = 'Lista Mujeres',
-          line = list(color = '#CCE4B1', width = 2.5, dash = 'dot'),
-          marker = list(size = 8, color = '#CCE4B1', symbol = 'square'),
-          hovertemplate = paste0(
-            '<b>%{x}</b><br>',
-            'Lista M: %{y:,.0f}<extra></extra>'
-          )
-        )
-        
-        # 3. Padrón Hombres
+        # 1. Padrón Hombres (PRIMERO - línea más alta)
         p <- p %>% add_trace(
           data = datos_con_sexo,
           x = ~año,
@@ -1532,7 +1500,23 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           )
         )
         
-        # 4. Lista Hombres
+        # 2. Padrón Mujeres (SEGUNDO)
+        p <- p %>% add_trace(
+          data = datos_con_sexo,
+          x = ~año,
+          y = ~padron_extranjero_mujeres,
+          type = 'scatter',
+          mode = 'lines+markers',
+          name = 'Padrón Mujeres',
+          line = list(color = '#F5CA45', width = 2.5),
+          marker = list(size = 8, color = '#F5CA45'),
+          hovertemplate = paste0(
+            '<b>%{x}</b><br>',
+            'Padrón M: %{y:,.0f}<extra></extra>'
+          )
+        )
+        
+        # 3. Lista Hombres (TERCERO)
         p <- p %>% add_trace(
           data = datos_con_sexo,
           x = ~año,
@@ -1545,6 +1529,22 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           hovertemplate = paste0(
             '<b>%{x}</b><br>',
             'Lista H: %{y:,.0f}<extra></extra>'
+          )
+        )
+        
+        # 4. Lista Mujeres (CUARTO - línea más baja)
+        p <- p %>% add_trace(
+          data = datos_con_sexo,
+          x = ~año,
+          y = ~lista_extranjero_mujeres,
+          type = 'scatter',
+          mode = 'lines+markers',
+          name = 'Lista Mujeres',
+          line = list(color = '#CCE4B1', width = 2.5, dash = 'dot'),
+          marker = list(size = 8, color = '#CCE4B1', symbol = 'square'),
+          hovertemplate = paste0(
+            '<b>%{x}</b><br>',
+            'Lista M: %{y:,.0f}<extra></extra>'
           )
         )
       }
@@ -1571,8 +1571,8 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           align = "center"
         ),
         list(
-          text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
-          x = 0.5, y = -0.35,
+          text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
+          x = 0.5, y = -0.45,
           xref = "paper", yref = "paper",
           xanchor = "center", yanchor = "top",
           showarrow = FALSE,
@@ -1601,7 +1601,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           x = 0.5,
           xanchor = "center"
         ),
-        xaxis = list(title = "Año", type = 'category'),
+        xaxis = list(title = "", type = 'category'),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
         legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.25),
         margin = list(t = 130, b = 140, l = 90, r = 50),
@@ -1702,7 +1702,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             align = "center"
           ),
           list(
-            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
             x = 0.5, y = -0.30,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
@@ -1798,7 +1798,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             align = "center"
           ),
           list(
-            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
             x = 0.5, y = -0.30,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
@@ -1968,7 +1968,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           align = "center"
         ),
         list(
-          text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+          text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
           x = 0.5, y = -0.30,
           xref = "paper", yref = "paper",
           xanchor = "center", yanchor = "top",
@@ -2122,7 +2122,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                 align = "center"
               ),
               list(
-                text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+                text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
                 x = 0.0, y = -0.25,
                 xref = "paper", yref = "paper",
                 xanchor = "left", yanchor = "top",
@@ -2180,7 +2180,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                 align = "center"
               ),
               list(
-                text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+                text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
                 x = 0.0, y = -0.20,
                 xref = "paper", yref = "paper",
                 xanchor = "left", yanchor = "top",
@@ -2268,7 +2268,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                 align = "center"
               ),
               list(
-                text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+                text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
                 x = 0.0, y = -0.25,
                 xref = "paper", yref = "paper",
                 xanchor = "left", yanchor = "top",
@@ -2349,7 +2349,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                 align = "center"
               ),
               list(
-                text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+                text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
                 x = 0.0, y = -0.20,
                 xref = "paper", yref = "paper",
                 xanchor = "left", yanchor = "top",
@@ -2514,7 +2514,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             align = "center"
           ),
           list(
-            text = "Fuente: INE. Padrón Electoral y Lista Nominal de Electores.",
+            text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
             xref = "paper", yref = "paper",
             x = 0.0, y = -0.20,
             font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
