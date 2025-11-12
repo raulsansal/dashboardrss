@@ -905,7 +905,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           x = 0.5, 
           y = -0.20
         ),
-        margin = list(t = 120, b = 120, l = 90, r = 50),
+        margin = list(t = 120, b = 140, l = 90, r = 50),
         hovermode = 'x unified',
         annotations = list(
           list(
@@ -1076,7 +1076,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           x = 0.5, 
           y = -0.20
         ),
-        margin = list(t = 120, b = 120, l = 90, r = 50),
+        margin = list(t = 120, b = 140, l = 90, r = 50),
         hovermode = 'x unified',
         annotations = list(
           list(
@@ -1177,7 +1177,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         xaxis = list(title = "", type = 'category'),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
         legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
-        margin = list(t = 120, b = 120, l = 90, r = 50),
+        margin = list(t = 120, b = 140, l = 90, r = 50),
         hovermode = 'x unified',
         annotations = list(
           list(
@@ -1273,7 +1273,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         xaxis = list(title = "", type = 'category'),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
         legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
-        margin = list(t = 120, b = 120, l = 90, r = 50),
+        margin = list(t = 120, b = 140, l = 90, r = 50),
         hovermode = 'x unified',
         annotations = list(
           list(
@@ -1347,74 +1347,80 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                  ))
       }
       
-      # Crear gráfico con ORDEN REORDENADO
+      # Crear gráfico con ORDEN DINÁMICO
       p <- plot_ly()
       
-      # ========== ORDEN NUEVO: M → M → H → H ==========
+      # ========== ORDENAR TRAZAS DINÁMICAMENTE ==========
+      # Obtener último valor de cada serie para determinar orden visual
+      ultimo_padron_h <- tail(datos_anuales$padron_hombres[!is.na(datos_anuales$padron_hombres)], 1)
+      ultimo_padron_m <- tail(datos_anuales$padron_mujeres[!is.na(datos_anuales$padron_mujeres)], 1)
+      ultimo_lista_h <- tail(datos_anuales$lista_hombres[!is.na(datos_anuales$lista_hombres)], 1)
+      ultimo_lista_m <- tail(datos_anuales$lista_mujeres[!is.na(datos_anuales$lista_mujeres)], 1)
       
-      # 1. Padrón Mujeres (PRIMERO)
-      p <- p %>% add_trace(
-        data = datos_anuales,
-        x = ~año,
-        y = ~padron_mujeres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Padrón Mujeres',
-        line = list(color = '#E24A90', width = 2.5),
-        marker = list(size = 8, color = '#E24A90'),
-        hovertemplate = paste0(
-          '<b>%{x}</b><br>',
-          'Padrón M: %{y:,.0f}<extra></extra>'
-        )
+      # Crear lista con metadatos de cada traza
+      trazas_info <- data.frame(
+        nombre = c("padron_h", "padron_m", "lista_h", "lista_m"),
+        valor = c(ultimo_padron_h, ultimo_padron_m, ultimo_lista_h, ultimo_lista_m),
+        stringsAsFactors = FALSE
       )
       
-      # 2. Lista Mujeres (SEGUNDO)
-      p <- p %>% add_trace(
-        data = datos_anuales,
-        x = ~año,
-        y = ~lista_mujeres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Lista Mujeres',
-        line = list(color = '#A83565', width = 2.5, dash = 'dot'),
-        marker = list(size = 8, color = '#A83565', symbol = 'square'),
-        hovertemplate = paste0(
-          '<b>%{x}</b><br>',
-          'Lista M: %{y:,.0f}<extra></extra>'
-        )
-      )
+      # Ordenar de mayor a menor (orden visual de arriba a abajo)
+      trazas_info <- trazas_info[order(trazas_info$valor, decreasing = TRUE), ]
       
-      # 3. Padrón Hombres (TERCERO)
-      p <- p %>% add_trace(
-        data = datos_anuales,
-        x = ~año,
-        y = ~padron_hombres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Padrón Hombres',
-        line = list(color = '#4A90E2', width = 2.5),
-        marker = list(size = 8, color = '#4A90E2'),
-        hovertemplate = paste0(
-          '<b>%{x}</b><br>',
-          'Padrón H: %{y:,.0f}<extra></extra>'
-        )
-      )
-      
-      # 4. Lista Hombres (CUARTO)
-      p <- p %>% add_trace(
-        data = datos_anuales,
-        x = ~año,
-        y = ~lista_hombres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Lista Hombres',
-        line = list(color = '#2E5C8A', width = 2.5, dash = 'dot'),
-        marker = list(size = 8, color = '#2E5C8A', symbol = 'square'),
-        hovertemplate = paste0(
-          '<b>%{x}</b><br>',
-          'Lista H: %{y:,.0f}<extra></extra>'
-        )
-      )
+      # Agregar trazas en el orden visual correcto
+      for (i in 1:nrow(trazas_info)) {
+        traza_nombre <- trazas_info$nombre[i]
+        
+        if (traza_nombre == "padron_h") {
+          p <- p %>% add_trace(
+            data = datos_anuales,
+            x = ~año,
+            y = ~padron_hombres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Padrón Hombres',
+            line = list(color = '#4A90E2', width = 2.5),
+            marker = list(size = 8, color = '#4A90E2'),
+            hovertemplate = paste0('<b>%{x}</b><br>Padrón H: %{y:,.0f}<extra></extra>')
+          )
+        } else if (traza_nombre == "padron_m") {
+          p <- p %>% add_trace(
+            data = datos_anuales,
+            x = ~año,
+            y = ~padron_mujeres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Padrón Mujeres',
+            line = list(color = '#E24A90', width = 2.5),
+            marker = list(size = 8, color = '#E24A90'),
+            hovertemplate = paste0('<b>%{x}</b><br>Padrón M: %{y:,.0f}<extra></extra>')
+          )
+        } else if (traza_nombre == "lista_h") {
+          p <- p %>% add_trace(
+            data = datos_anuales,
+            x = ~año,
+            y = ~lista_hombres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Lista Hombres',
+            line = list(color = '#2E5C8A', width = 2.5, dash = 'dot'),
+            marker = list(size = 8, color = '#2E5C8A', symbol = 'square'),
+            hovertemplate = paste0('<b>%{x}</b><br>Lista H: %{y:,.0f}<extra></extra>')
+          )
+        } else if (traza_nombre == "lista_m") {
+          p <- p %>% add_trace(
+            data = datos_anuales,
+            x = ~año,
+            y = ~lista_mujeres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Lista Mujeres',
+            line = list(color = '#A83565', width = 2.5, dash = 'dot'),
+            marker = list(size = 8, color = '#A83565', symbol = 'square'),
+            hovertemplate = paste0('<b>%{x}</b><br>Lista M: %{y:,.0f}<extra></extra>')
+          )
+        }
+      }
       
       # Layout
       p <- p %>% layout(
@@ -1426,8 +1432,14 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         ),
         xaxis = list(title = "", type = 'category'),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
-        legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
-        margin = list(t = 120, b = 120, l = 90, r = 50),
+        legend = list(
+          orientation = "h", 
+          xanchor = "center", 
+          x = 0.5, 
+          y = -0.20,
+          traceorder = "normal"  # ← NUEVO: Forzar orden de trazas
+        ),
+        margin = list(t = 120, b = 140, l = 90, r = 50),
         hovermode = 'x unified',
         annotations = list(
           list(
@@ -1534,71 +1546,77 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       if (length(años_con_sexo) > 0) {
         datos_con_sexo <- datos_extranjero[datos_extranjero$año %in% años_con_sexo, ]
         
-        # ========== ORDEN CORREGIDO: H → H → M → M (coincide con orden visual descendente) ==========
+        # ========== ORDENAR TRAZAS DINÁMICAMENTE ==========
+        # Obtener último valor de cada serie para determinar orden visual
+        ultimo_padron_h <- tail(datos_con_sexo$padron_extranjero_hombres[!is.na(datos_con_sexo$padron_extranjero_hombres)], 1)
+        ultimo_padron_m <- tail(datos_con_sexo$padron_extranjero_mujeres[!is.na(datos_con_sexo$padron_extranjero_mujeres)], 1)
+        ultimo_lista_h <- tail(datos_con_sexo$lista_extranjero_hombres[!is.na(datos_con_sexo$lista_extranjero_hombres)], 1)
+        ultimo_lista_m <- tail(datos_con_sexo$lista_extranjero_mujeres[!is.na(datos_con_sexo$lista_extranjero_mujeres)], 1)
         
-        # 1. Padrón Hombres (PRIMERO - línea más alta)
-        p <- p %>% add_trace(
-          data = datos_con_sexo,
-          x = ~año,
-          y = ~padron_extranjero_hombres,
-          type = 'scatter',
-          mode = 'lines+markers',
-          name = 'Padrón Hombres',
-          line = list(color = '#D4A500', width = 2.5),
-          marker = list(size = 8, color = '#D4A500'),
-          hovertemplate = paste0(
-            '<b>%{x}</b><br>',
-            'Padrón H: %{y:,.0f}<extra></extra>'
-          )
+        # Crear lista con metadatos de cada traza
+        trazas_info <- data.frame(
+          nombre = c("padron_h", "padron_m", "lista_h", "lista_m"),
+          valor = c(ultimo_padron_h, ultimo_padron_m, ultimo_lista_h, ultimo_lista_m),
+          stringsAsFactors = FALSE
         )
         
-        # 2. Padrón Mujeres (SEGUNDO)
-        p <- p %>% add_trace(
-          data = datos_con_sexo,
-          x = ~año,
-          y = ~padron_extranjero_mujeres,
-          type = 'scatter',
-          mode = 'lines+markers',
-          name = 'Padrón Mujeres',
-          line = list(color = '#F5CA45', width = 2.5),
-          marker = list(size = 8, color = '#F5CA45'),
-          hovertemplate = paste0(
-            '<b>%{x}</b><br>',
-            'Padrón M: %{y:,.0f}<extra></extra>'
-          )
-        )
+        # Ordenar de mayor a menor (orden visual de arriba a abajo)
+        trazas_info <- trazas_info[order(trazas_info$valor, decreasing = TRUE), ]
         
-        # 3. Lista Hombres (TERCERO)
-        p <- p %>% add_trace(
-          data = datos_con_sexo,
-          x = ~año,
-          y = ~lista_extranjero_hombres,
-          type = 'scatter',
-          mode = 'lines+markers',
-          name = 'Lista Hombres',
-          line = list(color = '#8FB369', width = 2.5, dash = 'dot'),
-          marker = list(size = 8, color = '#8FB369', symbol = 'square'),
-          hovertemplate = paste0(
-            '<b>%{x}</b><br>',
-            'Lista H: %{y:,.0f}<extra></extra>'
-          )
-        )
-        
-        # 4. Lista Mujeres (CUARTO - línea más baja)
-        p <- p %>% add_trace(
-          data = datos_con_sexo,
-          x = ~año,
-          y = ~lista_extranjero_mujeres,
-          type = 'scatter',
-          mode = 'lines+markers',
-          name = 'Lista Mujeres',
-          line = list(color = '#CCE4B1', width = 2.5, dash = 'dot'),
-          marker = list(size = 8, color = '#CCE4B1', symbol = 'square'),
-          hovertemplate = paste0(
-            '<b>%{x}</b><br>',
-            'Lista M: %{y:,.0f}<extra></extra>'
-          )
-        )
+        # Agregar trazas en el orden visual correcto
+        for (i in 1:nrow(trazas_info)) {
+          traza_nombre <- trazas_info$nombre[i]
+          
+          if (traza_nombre == "padron_h") {
+            p <- p %>% add_trace(
+              data = datos_con_sexo,
+              x = ~año,
+              y = ~padron_extranjero_hombres,
+              type = 'scatter',
+              mode = 'lines+markers',
+              name = 'Padrón Hombres',
+              line = list(color = '#D4A500', width = 2.5),
+              marker = list(size = 8, color = '#D4A500'),
+              hovertemplate = paste0('<b>%{x}</b><br>Padrón H: %{y:,.0f}<extra></extra>')
+            )
+          } else if (traza_nombre == "padron_m") {
+            p <- p %>% add_trace(
+              data = datos_con_sexo,
+              x = ~año,
+              y = ~padron_extranjero_mujeres,
+              type = 'scatter',
+              mode = 'lines+markers',
+              name = 'Padrón Mujeres',
+              line = list(color = '#F5CA45', width = 2.5),
+              marker = list(size = 8, color = '#F5CA45'),
+              hovertemplate = paste0('<b>%{x}</b><br>Padrón M: %{y:,.0f}<extra></extra>')
+            )
+          } else if (traza_nombre == "lista_h") {
+            p <- p %>% add_trace(
+              data = datos_con_sexo,
+              x = ~año,
+              y = ~lista_extranjero_hombres,
+              type = 'scatter',
+              mode = 'lines+markers',
+              name = 'Lista Hombres',
+              line = list(color = '#8FB369', width = 2.5, dash = 'dot'),
+              marker = list(size = 8, color = '#8FB369', symbol = 'square'),
+              hovertemplate = paste0('<b>%{x}</b><br>Lista H: %{y:,.0f}<extra></extra>')
+            )
+          } else if (traza_nombre == "lista_m") {
+            p <- p %>% add_trace(
+              data = datos_con_sexo,
+              x = ~año,
+              y = ~lista_extranjero_mujeres,
+              type = 'scatter',
+              mode = 'lines+markers',
+              name = 'Lista Mujeres',
+              line = list(color = '#CCE4B1', width = 2.5, dash = 'dot'),
+              marker = list(size = 8, color = '#CCE4B1', symbol = 'square'),
+              hovertemplate = paste0('<b>%{x}</b><br>Lista M: %{y:,.0f}<extra></extra>')
+            )
+          }
+        }
       }
       
       # ========== PREPARAR TEXTO DE ANOTACIÓN ==========
@@ -1731,7 +1749,11 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         )
       )
       
-      # Layout
+      # ========== CONFIGURACIÓN DEL EJE X CORREGIDA ==========
+      fechas_datos <- datos_completos$fecha
+      etiquetas_meses <- format(fechas_datos, "%b")
+      
+      # Layout con eje X corregido
       p <- p %>% layout(
         title = list(
           text = paste0("Evolución Mensual ", year_datos, " - Nacional"),
@@ -1739,10 +1761,18 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           x = 0.5,
           xanchor = "center"
         ),
-        xaxis = list(title = "", type = 'date', tickformat = "%b"),
+        xaxis = list(
+          title = "",
+          type = 'date',
+          tickmode = "array",
+          tickvals = fechas_datos,
+          ticktext = etiquetas_meses,
+          tickangle = 0,
+          range = c(min(fechas_datos) - 5, max(fechas_datos) + 5)
+        ),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
         legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
-        margin = list(t = 120, b = 120, l = 90, r = 50),
+        margin = list(t = 120, b = 140, l = 90, r = 50),
         hovermode = 'x unified',
         annotations = list(
           list(
@@ -1756,7 +1786,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           ),
           list(
             text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
-            x = 0.5, y = -0.30,
+            x = 0.5, y = -0.40,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
             showarrow = FALSE,
@@ -1831,7 +1861,11 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
         )
       )
       
-      # Layout
+      # ========== CONFIGURACIÓN DEL EJE X CORREGIDA ==========
+      fechas_extranjero <- datos_extranjero$fecha
+      etiquetas_meses <- format(fechas_extranjero, "%b")
+      
+      # Layout con eje X corregido
       p <- p %>% layout(
         title = list(
           text = paste0("Evolución Mensual ", year_datos, " - Extranjero"),
@@ -1839,10 +1873,18 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           x = 0.5,
           xanchor = "center"
         ),
-        xaxis = list(title = "", type = 'date', tickformat = "%b"),
+        xaxis = list(
+          title = "",
+          type = 'date',
+          tickmode = "array",
+          tickvals = fechas_extranjero,
+          ticktext = etiquetas_meses,
+          tickangle = 0,
+          range = c(min(fechas_extranjero) - 5, max(fechas_extranjero) + 5)
+        ),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
         legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
-        margin = list(t = 120, b = 120, l = 90, r = 50),
+        margin = list(t = 120, b = 140, l = 90, r = 50),
         hovermode = 'x unified',
         annotations = list(
           list(
@@ -1856,7 +1898,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           ),
           list(
             text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
-            x = 0.5, y = -0.30,
+            x = 0.5, y = -0.40,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
             showarrow = FALSE,
@@ -1920,74 +1962,86 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
                  ))
       }
       
-      # Crear gráfico
+      # Crear gráfico con ORDEN DINÁMICO
       p <- plot_ly()
       
-      # Padrón Hombres
-      p <- p %>% add_trace(
-        data = datos_completos,
-        x = ~fecha,
-        y = ~padron_hombres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Padrón Hombres',
-        line = list(color = '#4A90E2', width = 2.5),
-        marker = list(size = 8, color = '#4A90E2'),
-        hovertemplate = paste0(
-          '<b>%{x|%B %Y}</b><br>',
-          'Padrón H: %{y:,.0f}<extra></extra>'
-        )
+      # ========== ORDENAR TRAZAS DINÁMICAMENTE ==========
+      # Obtener último valor de cada serie para determinar orden visual
+      ultimo_padron_h <- tail(datos_completos$padron_hombres[!is.na(datos_completos$padron_hombres)], 1)
+      ultimo_padron_m <- tail(datos_completos$padron_mujeres[!is.na(datos_completos$padron_mujeres)], 1)
+      ultimo_lista_h <- tail(datos_completos$lista_hombres[!is.na(datos_completos$lista_hombres)], 1)
+      ultimo_lista_m <- tail(datos_completos$lista_mujeres[!is.na(datos_completos$lista_mujeres)], 1)
+      
+      # Crear lista con metadatos de cada traza
+      trazas_info <- data.frame(
+        nombre = c("padron_h", "padron_m", "lista_h", "lista_m"),
+        valor = c(ultimo_padron_h, ultimo_padron_m, ultimo_lista_h, ultimo_lista_m),
+        stringsAsFactors = FALSE
       )
       
-      # Padrón Mujeres
-      p <- p %>% add_trace(
-        data = datos_completos,
-        x = ~fecha,
-        y = ~padron_mujeres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Padrón Mujeres',
-        line = list(color = '#E24A90', width = 2.5),
-        marker = list(size = 8, color = '#E24A90'),
-        hovertemplate = paste0(
-          '<b>%{x|%B %Y}</b><br>',
-          'Padrón M: %{y:,.0f}<extra></extra>'
-        )
-      )
+      # Ordenar de mayor a menor (orden visual de arriba a abajo)
+      trazas_info <- trazas_info[order(trazas_info$valor, decreasing = TRUE), ]
       
-      # Lista Hombres
-      p <- p %>% add_trace(
-        data = datos_completos,
-        x = ~fecha,
-        y = ~lista_hombres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Lista Hombres',
-        line = list(color = '#2E5C8A', width = 2.5, dash = 'dot'),
-        marker = list(size = 8, color = '#2E5C8A', symbol = 'square'),
-        hovertemplate = paste0(
-          '<b>%{x|%B %Y}</b><br>',
-          'Lista H: %{y:,.0f}<extra></extra>'
-        )
-      )
+      # Agregar trazas en el orden visual correcto
+      for (i in 1:nrow(trazas_info)) {
+        traza_nombre <- trazas_info$nombre[i]
+        
+        if (traza_nombre == "padron_h") {
+          p <- p %>% add_trace(
+            data = datos_completos,
+            x = ~fecha,
+            y = ~padron_hombres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Padrón Hombres',
+            line = list(color = '#4A90E2', width = 2.5),
+            marker = list(size = 8, color = '#4A90E2'),
+            hovertemplate = paste0('<b>%{x|%B %Y}</b><br>Padrón H: %{y:,.0f}<extra></extra>')
+          )
+        } else if (traza_nombre == "padron_m") {
+          p <- p %>% add_trace(
+            data = datos_completos,
+            x = ~fecha,
+            y = ~padron_mujeres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Padrón Mujeres',
+            line = list(color = '#E24A90', width = 2.5),
+            marker = list(size = 8, color = '#E24A90'),
+            hovertemplate = paste0('<b>%{x|%B %Y}</b><br>Padrón M: %{y:,.0f}<extra></extra>')
+          )
+        } else if (traza_nombre == "lista_h") {
+          p <- p %>% add_trace(
+            data = datos_completos,
+            x = ~fecha,
+            y = ~lista_hombres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Lista Hombres',
+            line = list(color = '#2E5C8A', width = 2.5, dash = 'dot'),
+            marker = list(size = 8, color = '#2E5C8A', symbol = 'square'),
+            hovertemplate = paste0('<b>%{x|%B %Y}</b><br>Lista H: %{y:,.0f}<extra></extra>')
+          )
+        } else if (traza_nombre == "lista_m") {
+          p <- p %>% add_trace(
+            data = datos_completos,
+            x = ~fecha,
+            y = ~lista_mujeres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Lista Mujeres',
+            line = list(color = '#A83565', width = 2.5, dash = 'dot'),
+            marker = list(size = 8, color = '#A83565', symbol = 'square'),
+            hovertemplate = paste0('<b>%{x|%B %Y}</b><br>Lista M: %{y:,.0f}<extra></extra>')
+          )
+        }
+      }
       
-      # Lista Mujeres
-      p <- p %>% add_trace(
-        data = datos_completos,
-        x = ~fecha,
-        y = ~lista_mujeres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Lista Mujeres',
-        line = list(color = '#A83565', width = 2.5, dash = 'dot'),
-        marker = list(size = 8, color = '#A83565', symbol = 'square'),
-        hovertemplate = paste0(
-          '<b>%{x|%B %Y}</b><br>',
-          'Lista M: %{y:,.0f}<extra></extra>'
-        )
-      )
+      # ========== CONFIGURACIÓN DEL EJE X CORREGIDA ==========
+      fechas_datos <- datos_completos$fecha
+      etiquetas_meses <- format(fechas_datos, "%b")
       
-      # Layout
+      # Layout con eje X corregido y traceorder forzado
       p <- p %>% layout(
         title = list(
           text = paste0("Evolución Mensual ", year_datos, " por Sexo - Nacional"),
@@ -1995,10 +2049,24 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           x = 0.5,
           xanchor = "center"
         ),
-        xaxis = list(title = "", type = 'date', tickformat = "%b"),
+        xaxis = list(
+          title = "",
+          type = 'date',
+          tickmode = "array",
+          tickvals = fechas_datos,
+          ticktext = etiquetas_meses,
+          tickangle = 0,
+          range = c(min(fechas_datos) - 5, max(fechas_datos) + 5)
+        ),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
-        legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
-        margin = list(t = 120, b = 120, l = 90, r = 50),
+        legend = list(
+          orientation = "h", 
+          xanchor = "center", 
+          x = 0.5, 
+          y = -0.20,
+          traceorder = "normal"  # ← NUEVO: Forzar orden de trazas
+        ),
+        margin = list(t = 120, b = 140, l = 90, r = 50),
         hovermode = 'x unified',
         annotations = list(
           list(
@@ -2012,7 +2080,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           ),
           list(
             text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
-            x = 0.5, y = -0.30,
+            x = 0.5, y = -0.40,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
             showarrow = FALSE,
@@ -2078,74 +2146,86 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
       datos_extranjero$lista_hombres <- datos_extranjero$lista_extranjero_hombres
       datos_extranjero$lista_mujeres <- datos_extranjero$lista_extranjero_mujeres
       
-      # Crear gráfico
+      # Crear gráfico con ORDEN DINÁMICO
       p <- plot_ly()
       
-      # Padrón Hombres
-      p <- p %>% add_trace(
-        data = datos_extranjero,
-        x = ~fecha,
-        y = ~padron_hombres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Padrón Hombres',
-        line = list(color = '#D4A500', width = 2.5),
-        marker = list(size = 8, color = '#D4A500'),
-        hovertemplate = paste0(
-          '<b>%{x|%B %Y}</b><br>',
-          'Padrón H: %{y:,.0f}<extra></extra>'
-        )
+      # ========== ORDENAR TRAZAS DINÁMICAMENTE ==========
+      # Obtener último valor de cada serie para determinar orden visual
+      ultimo_padron_h <- tail(datos_extranjero$padron_extranjero_hombres[!is.na(datos_extranjero$padron_extranjero_hombres)], 1)
+      ultimo_padron_m <- tail(datos_extranjero$padron_extranjero_mujeres[!is.na(datos_extranjero$padron_extranjero_mujeres)], 1)
+      ultimo_lista_h <- tail(datos_extranjero$lista_extranjero_hombres[!is.na(datos_extranjero$lista_extranjero_hombres)], 1)
+      ultimo_lista_m <- tail(datos_extranjero$lista_extranjero_mujeres[!is.na(datos_extranjero$lista_extranjero_mujeres)], 1)
+      
+      # Crear lista con metadatos de cada traza
+      trazas_info <- data.frame(
+        nombre = c("padron_h", "padron_m", "lista_h", "lista_m"),
+        valor = c(ultimo_padron_h, ultimo_padron_m, ultimo_lista_h, ultimo_lista_m),
+        stringsAsFactors = FALSE
       )
       
-      # Padrón Mujeres
-      p <- p %>% add_trace(
-        data = datos_extranjero,
-        x = ~fecha,
-        y = ~padron_mujeres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Padrón Mujeres',
-        line = list(color = '#F5CA45', width = 2.5),
-        marker = list(size = 8, color = '#F5CA45'),
-        hovertemplate = paste0(
-          '<b>%{x|%B %Y}</b><br>',
-          'Padrón M: %{y:,.0f}<extra></extra>'
-        )
-      )
+      # Ordenar de mayor a menor (orden visual de arriba a abajo)
+      trazas_info <- trazas_info[order(trazas_info$valor, decreasing = TRUE), ]
       
-      # Lista Hombres
-      p <- p %>% add_trace(
-        data = datos_extranjero,
-        x = ~fecha,
-        y = ~lista_hombres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Lista Hombres',
-        line = list(color = '#8FB369', width = 2.5, dash = 'dot'),
-        marker = list(size = 8, color = '#8FB369', symbol = 'square'),
-        hovertemplate = paste0(
-          '<b>%{x|%B %Y}</b><br>',
-          'Lista H: %{y:,.0f}<extra></extra>'
-        )
-      )
+      # Agregar trazas en el orden visual correcto
+      for (i in 1:nrow(trazas_info)) {
+        traza_nombre <- trazas_info$nombre[i]
+        
+        if (traza_nombre == "padron_h") {
+          p <- p %>% add_trace(
+            data = datos_extranjero,
+            x = ~fecha,
+            y = ~padron_extranjero_hombres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Padrón Hombres',
+            line = list(color = '#D4A500', width = 2.5),
+            marker = list(size = 8, color = '#D4A500'),
+            hovertemplate = paste0('<b>%{x|%B %Y}</b><br>Padrón H: %{y:,.0f}<extra></extra>')
+          )
+        } else if (traza_nombre == "padron_m") {
+          p <- p %>% add_trace(
+            data = datos_extranjero,
+            x = ~fecha,
+            y = ~padron_extranjero_mujeres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Padrón Mujeres',
+            line = list(color = '#F5CA45', width = 2.5),
+            marker = list(size = 8, color = '#F5CA45'),
+            hovertemplate = paste0('<b>%{x|%B %Y}</b><br>Padrón M: %{y:,.0f}<extra></extra>')
+          )
+        } else if (traza_nombre == "lista_h") {
+          p <- p %>% add_trace(
+            data = datos_extranjero,
+            x = ~fecha,
+            y = ~lista_extranjero_hombres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Lista Hombres',
+            line = list(color = '#8FB369', width = 2.5, dash = 'dot'),
+            marker = list(size = 8, color = '#8FB369', symbol = 'square'),
+            hovertemplate = paste0('<b>%{x|%B %Y}</b><br>Lista H: %{y:,.0f}<extra></extra>')
+          )
+        } else if (traza_nombre == "lista_m") {
+          p <- p %>% add_trace(
+            data = datos_extranjero,
+            x = ~fecha,
+            y = ~lista_extranjero_mujeres,
+            type = 'scatter',
+            mode = 'lines+markers',
+            name = 'Lista Mujeres',
+            line = list(color = '#CCE4B1', width = 2.5, dash = 'dot'),
+            marker = list(size = 8, color = '#CCE4B1', symbol = 'square'),
+            hovertemplate = paste0('<b>%{x|%B %Y}</b><br>Lista M: %{y:,.0f}<extra></extra>')
+          )
+        }
+      }
       
-      # Lista Mujeres
-      p <- p %>% add_trace(
-        data = datos_extranjero,
-        x = ~fecha,
-        y = ~lista_mujeres,
-        type = 'scatter',
-        mode = 'lines+markers',
-        name = 'Lista Mujeres',
-        line = list(color = '#CCE4B1', width = 2.5, dash = 'dot'),
-        marker = list(size = 8, color = '#CCE4B1', symbol = 'square'),
-        hovertemplate = paste0(
-          '<b>%{x|%B %Y}</b><br>',
-          'Lista M: %{y:,.0f}<extra></extra>'
-        )
-      )
+      # ========== CONFIGURACIÓN DEL EJE X CORREGIDA ==========
+      fechas_extranjero <- datos_extranjero$fecha
+      etiquetas_meses <- format(fechas_extranjero, "%b")
       
-      # Layout
+      # Layout con eje X corregido y traceorder forzado
       p <- p %>% layout(
         title = list(
           text = paste0("Evolución Mensual ", year_datos, " por Sexo - Extranjero"),
@@ -2153,10 +2233,24 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           x = 0.5,
           xanchor = "center"
         ),
-        xaxis = list(title = "", type = 'date', tickformat = "%b"),
+        xaxis = list(
+          title = "",
+          type = 'date',
+          tickmode = "array",
+          tickvals = fechas_extranjero,
+          ticktext = etiquetas_meses,
+          tickangle = 0,
+          range = c(min(fechas_extranjero) - 5, max(fechas_extranjero) + 5)
+        ),
         yaxis = list(title = "Número de Electores", separatethousands = TRUE),
-        legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.20),
-        margin = list(t = 120, b = 120, l = 90, r = 50),
+        legend = list(
+          orientation = "h", 
+          xanchor = "center", 
+          x = 0.5, 
+          y = -0.20,
+          traceorder = "normal"  # ← NUEVO: Forzar orden de trazas
+        ),
+        margin = list(t = 120, b = 140, l = 90, r = 50),
         hovermode = 'x unified',
         annotations = list(
           list(
@@ -2170,7 +2264,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           ),
           list(
             text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
-            x = 0.5, y = -0.30,
+            x = 0.5, y = -0.40,
             xref = "paper", yref = "paper",
             xanchor = "center", yanchor = "top",
             showarrow = FALSE,
@@ -2311,7 +2405,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             xaxis = list(title = ""),
             yaxis = list(title = "Número de Electores", separatethousands = TRUE),
             barmode = 'group',
-            margin = list(t = 120, b = 100, l = 80, r = 50),
+            margin = list(t = 120, b = 140, l = 90, r = 50),
             legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.15),
             annotations = list(
               list(
@@ -2325,7 +2419,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               ),
               list(
                 text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
-                x = 0.0, y = -0.25,
+                x = 0.5, y = -0.35,
                 xref = "paper", yref = "paper",
                 xanchor = "left", yanchor = "top",
                 showarrow = FALSE,
@@ -2370,7 +2464,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
             ),
             xaxis = list(title = ""),
             yaxis = list(title = "Número de Electores", separatethousands = TRUE),
-            margin = list(t = 120, b = 100, l = 80, r = 50),
+            margin = list(t = 120, b = 140, l = 90, r = 50),
             annotations = list(
               list(
                 text = generar_texto_alcance(input),
@@ -2383,7 +2477,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               ),
               list(
                 text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
-                x = 0.0, y = -0.20,
+                x = 0.5, y = -0.35,
                 xref = "paper", yref = "paper",
                 xanchor = "left", yanchor = "top",
                 showarrow = FALSE,
@@ -2458,7 +2552,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               title = "Número de Electores",
               separatethousands = TRUE
             ),
-            margin = list(t = 120, b = 100, l = 80, r = 50),
+            margin = list(t = 120, b = 140, l = 90, r = 50),
             annotations = list(
               list(
                 text = generar_texto_alcance(input),
@@ -2539,7 +2633,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               separatethousands = TRUE
             ),
             yaxis = list(title = ""),
-            margin = list(t = 120, b = 100, l = 180, r = 50),
+            margin = list(t = 120, b = 140, l = 180, r = 50),
             annotations = list(
               list(
                 text = generar_texto_alcance(input),
@@ -2552,7 +2646,7 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
               ),
               list(
                 text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
-                x = 0.0, y = -0.20,
+                x = 0.5, y = -0.35,
                 xref = "paper", yref = "paper",
                 xanchor = "left", yanchor = "top",
                 showarrow = FALSE,
@@ -2718,13 +2812,13 @@ lista_nominal_server_graficas <- function(input, output, session, datos_columnas
           list(
             text = "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado",
             xref = "paper", yref = "paper",
-            x = 0.0, y = -0.20,
+            x = 0.5, y = -0.35,
             font = list(size = 10, color = "#666666", family = "Arial, sans-serif"),
             showarrow = FALSE,
             align = "left"
           )
         ),
-        margin = list(t = 120, b = 100, l = 50, r = 50),
+        margin = list(t = 120, b = 140, l = 50, r = 50),
         showlegend = FALSE
       )
     
