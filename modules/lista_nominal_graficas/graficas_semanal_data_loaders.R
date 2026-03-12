@@ -146,7 +146,7 @@ graficas_semanal_data_loaders <- function(input, output, session,
   # (independiente de nombre_entidad, que conserva el nombre del estado)
   es_fila_extranjero <- function(df) {
     if (!"cabecera_distrital" %in% colnames(df)) return(rep(FALSE, nrow(df)))
-    toupper(trimws(df$cabecera_distrital)) == "RESIDENTES EXTRANJERO"
+    grepl("RESIDENTES EXTRANJERO", toupper(trimws(df$cabecera_distrital)), fixed = TRUE)
   }
   
   # extraer_fila_agregada(): devuelve UNA fila agregada para la serie

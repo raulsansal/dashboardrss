@@ -43,7 +43,7 @@ graficas_semanal <- function(input, output, session,
   COLORES <- list(
     nac_padron  = "#003E66", nac_lista   = "#AE0E35",
     nac_hombres = "#44559B", nac_mujeres = "#C0311A",
-    ext_padron  = "#EAC43E", ext_lista   = "#B3D491",
+    ext_padron  = "#FFD14A", ext_lista   = "#71A251",
     ext_hombres = "#D4A500", ext_mujeres = "#8FB369"
   )
   FUENTE_INE <- "Fuente: INE. Estadística de Padrón Electoral y Lista Nominal del Electorado"
@@ -116,7 +116,7 @@ graficas_semanal <- function(input, output, session,
   # Identificador canónico de filas EXT
   es_fila_extranjero <- function(df) {
     if (!"cabecera_distrital" %in% colnames(df)) return(rep(FALSE, nrow(df)))
-    toupper(trimws(df$cabecera_distrital)) == "RESIDENTES EXTRANJERO"
+    grepl("RESIDENTES EXTRANJERO", toupper(trimws(df$cabecera_distrital)), fixed = TRUE)
   }
   
   # Las 32 filas EXT

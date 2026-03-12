@@ -108,10 +108,10 @@ graficas_semanal_edad <- function(input, output, session,
                "#277592","#015378","#003E66","#012A51","#00193B")
   ROJOS   <- c("#FFA0A0","#F87FA8","#F15F8E","#E05F7F",
                "#D10F3F","#D3103F","#AE0E35","#8B0A2B","#71001B")
-  DORADOS <- c("#FFF2CC","#FFEAA9","#FFE48A","#FFDE6F",
-               "#FFD14A","#F5CA45","#EAC43E","#E0BD39","#D6B632")
-  VERDES  <- c("#CCE4B1","#B3D491","#99C374","#7EAF5A",
-               "#71A251","#518033","#49732C","#3E6625","#37591F")
+  DORADOS <- c("#D6B632","#E0BD39","#EAC43E","#F5CA45",
+               "#FFD14A","#FFDE6F","#FFE48A","#FFEAA9","#FFF2CC")
+  VERDES  <- c("#37591F","#3E6625","#49732C","#518033",
+               "#71A251","#7EAF5A","#99C374","#B3D491","#CCE4B1")
   
   # Función que devuelve el color de padrón y LNE para el rango i (1-indexed)
   # Nacional: padrón=azul[i], LNE=rojo[i]; Extranjero: pad=dorado[i], lne=verde[i]
@@ -233,7 +233,7 @@ graficas_semanal_edad <- function(input, output, session,
       # Identificador canónico de filas EXT
       es_ext <- function(df) {
         if (!"cabecera_distrital" %in% colnames(df)) return(rep(FALSE, nrow(df)))
-        toupper(trimws(df$cabecera_distrital)) == "RESIDENTES EXTRANJERO"
+        grepl("RESIDENTES EXTRANJERO", toupper(trimws(df$cabecera_distrital)), fixed = TRUE)
       }
       
       # Seleccionar filas según ámbito y filtros
