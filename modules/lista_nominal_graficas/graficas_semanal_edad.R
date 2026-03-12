@@ -1,12 +1,23 @@
 # modules/lista_nominal_graficas/graficas_semanal_edad.R
 # Vista Semanal — Gráficas de Edad: E1, E2, E3, E4
-# Versión: 1.7
+# Versión: 1.13 — Fix E2/E4: incluir no_binario en suma de LNE y Padrón por grupo/rango
 #
-# CAMBIOS vs v1.6:
-#   E1/E3/E4 — ann_fuente() removida del layout de Plotly;
-#              fuente ahora es div HTML estático en graficas_ui_render.R
-#              (evita solapamiento con leyenda dinámica)
-#   E1/E3/E4 — margin b reducido a 80 (leyenda y=-0.10, sin anotación extra)
+# CAMBIOS vs v1.8:
+#   construir_fila_filtrada(): corregido bug de doble conteo de filas-extranjero.
+#   Ahora excluye por firma estructural (cve_distrito=0, cve_municipio=0, seccion=0)
+#   además de por nombre, y excluye también filas sin número de sección (subtotales).
+#
+# CAMBIOS vs v1.7:
+#   E1/E3 — Ahora responden a filtros geográficos del usuario.
+#   Se agrega reactive interno datos_serie_edad_efectiva() que decide:
+#     · estado "restablecido" o filtros nacionales → usa datos_semanal_serie_edad()
+#       (serie pre-cargada en caché, retorno inmediato)
+#     · estado "consultado" con filtros geográficos → calcula la serie al vuelo
+#       descargando cada semana con los filtros activos (sin cachear, igual que
+#       el histórico consultado). Muestra spinner simple mientras carga.
+#   E1 y E3 consumen datos_serie_edad_efectiva() en lugar de
+#   datos_semanal_serie_edad() directamente.
+#   Los bindEvent de E1 y E3 ya incluían input$btn_consultar — sin cambios.
 #
 # CAMBIOS vs v1.5:
 #   E4 — título con fecha dinámica y ámbito, colores pad/lne de E1,
@@ -148,6 +159,195 @@ graficas_semanal_edad <- function(input, output, session,
           meses[as.integer(format(d, "%m"))],
           format(d, "%Y"))
   }
+  
+  # ══════════════════════════════════════════════════════════════════════════
+  # REACTIVE: datos_serie_edad_efectiva()
+  #
+  # Punto único de acceso a la serie temporal de edad para E1 y E3.
+  # Decide qué fuente usar según el estado y los filtros activos:
+  #
+  #   · "restablecido" o filtros nacionales:
+  #       → datos_semanal_serie_edad()  (pre-cargada en caché, instantáneo)
+  #
+  #   · "consultado" con filtros geográficos (entidad/distrito/municipio/sección):
+  #       → calcula la serie al vuelo descargando cada semana con los filtros
+  #         del usuario. No se cachea (igual que el histórico consultado).
+  #         Muestra spinner simple mientras carga.
+  #
+  # Al cambiar de estado restablecido → consultado, el bindEvent de E1/E3
+  # (que ya incluye input$btn_consultar) dispara el re-render con esta serie.
+  # ══════════════════════════════════════════════════════════════════════════
+  
+  filtros_defecto_local <- list(entidad = "Nacional", distrito = "Todos",
+                                municipio = "Todos", seccion = "Todas")
+  
+  es_nacional_sin_filtros_local <- function(f) {
+    f$entidad == "Nacional" && f$distrito == "Todos" && f$municipio == "Todos" &&
+      (is.null(f$seccion) || "Todas" %in% f$seccion || length(f$seccion) == 0)
+  }
+  
+  datos_serie_edad_efectiva <- reactive({
+    if (es_historico() || desglose_activo() != "edad") return(NULL)
+    
+    estado_actual <- estado_app()
+    ambito        <- ambito_reactivo()
+    
+    # Estado restablecido → siempre la serie cacheada nacional/extranjero
+    if (estado_actual != "consultado") {
+      return(datos_semanal_serie_edad())
+    }
+    
+    # Estado consultado: obtener filtros del usuario
+    btn     <- input$btn_consultar
+    filtros <- isolate({
+      list(
+        entidad   = input$entidad   %||% "Nacional",
+        distrito  = input$distrito  %||% "Todos",
+        municipio = input$municipio %||% "Todos",
+        seccion   = input$seccion   %||% "Todas"
+      )
+    })
+    
+    # Si los filtros son nacionales → también usar la serie cacheada
+    if (es_nacional_sin_filtros_local(filtros)) {
+      message("📊 [serie_edad_efectiva] Consultado con filtros nacionales → caché")
+      return(datos_semanal_serie_edad())
+    }
+    
+    # Filtros geográficos activos → calcular serie al vuelo
+    message("📊 [serie_edad_efectiva] Filtros geográficos: ",
+            filtros$entidad, " / ", filtros$distrito, " / ", filtros$municipio)
+    
+    if (!exists("LNE_CATALOG", envir = .GlobalEnv)) return(NULL)
+    catalog <- get("LNE_CATALOG", envir = .GlobalEnv)
+    fechas  <- sort(as.Date(catalog$semanal_comun, origin = "1970-01-01"))
+    fechas  <- fechas[fechas <= Sys.Date()]
+    if (length(fechas) == 0) return(NULL)
+    
+    ORDEN_EDAD_LOCAL <- c("18","19","20_24","25_29","30_34","35_39",
+                          "40_44","45_49","50_54","55_59","60_64","65_y_mas")
+    
+    construir_fila_filtrada <- function(df_raw, fecha_d) {
+      if (is.null(df_raw) || nrow(df_raw) == 0) return(NULL)
+      
+      # Identificador canónico de filas EXT
+      es_ext <- function(df) {
+        if (!"cabecera_distrital" %in% colnames(df)) return(rep(FALSE, nrow(df)))
+        toupper(trimws(df$cabecera_distrital)) == "RESIDENTES EXTRANJERO"
+      }
+      
+      # Seleccionar filas según ámbito y filtros
+      fila <- if (ambito == "extranjero") {
+        # EXT: sumar las 32 filas directamente
+        filas <- df_raw[es_ext(df_raw), , drop = FALSE]
+        if (nrow(filas) == 0) return(NULL)
+        cols_id  <- c("cve_entidad","nombre_entidad","cve_distrito","cabecera_distrital",
+                      "cve_municipio","nombre_municipio","seccion")
+        cols_num <- setdiff(colnames(filas), cols_id)
+        cols_num <- cols_num[sapply(filas[, cols_num, drop = FALSE],
+                                    function(x) is.numeric(x) ||
+                                      suppressWarnings(!any(is.na(as.numeric(x)))))]
+        ag <- as.data.frame(
+          lapply(filas[, cols_num, drop = FALSE], function(x) sum(as.numeric(x), na.rm = TRUE)),
+          stringsAsFactors = FALSE)
+        ag$nombre_entidad <- "RESIDENTES EXTRANJERO"
+        ag
+        
+      } else {
+        # Nacional: secciones nacionales (sin EXT, sin fila TOTALES)
+        # Si hay filtro geográfico activo, sumar solo las filas del filtro
+        mask_excl <- es_ext(df_raw)
+        if ("cve_entidad" %in% colnames(df_raw)) mask_excl <- mask_excl | is.na(df_raw$cve_entidad)
+        filas <- df_raw[!mask_excl, , drop = FALSE]
+        if (nrow(filas) == 0) return(NULL)
+        
+        if (nrow(filas) == 1) {
+          filas
+        } else {
+          cols_id  <- c("cve_entidad","nombre_entidad","cve_distrito","cabecera_distrital",
+                        "cve_municipio","nombre_municipio","seccion")
+          cols_num <- setdiff(colnames(filas), cols_id)
+          cols_num <- cols_num[sapply(filas[, cols_num, drop = FALSE],
+                                      function(x) is.numeric(x) ||
+                                        suppressWarnings(!any(is.na(as.numeric(x)))))]
+          ag <- as.data.frame(
+            lapply(filas[, cols_num, drop = FALSE], function(x) sum(as.numeric(x), na.rm = TRUE)),
+            stringsAsFactors = FALSE)
+          ag$nombre_entidad <- "SECCIONES_NAC"
+          ag
+        }
+      }
+      
+      if (is.null(fila) || nrow(fila) == 0) return(NULL)
+      
+      resultado <- list(fecha = fecha_d)
+      for (rango in ORDEN_EDAD_LOCAL) {
+        col_ph <- paste0("padron_", rango, "_hombres")
+        col_pm <- paste0("padron_", rango, "_mujeres")
+        col_pn <- paste0("padron_", rango, "_no_binario")
+        col_lh <- paste0("lista_",  rango, "_hombres")
+        col_lm <- paste0("lista_",  rango, "_mujeres")
+        col_ln <- paste0("lista_",  rango, "_no_binario")
+        resultado[[paste0("padron_", rango)]] <- sum(
+          if (col_ph %in% colnames(fila)) as.numeric(fila[[col_ph]]) else 0,
+          if (col_pm %in% colnames(fila)) as.numeric(fila[[col_pm]]) else 0,
+          if (col_pn %in% colnames(fila)) as.numeric(fila[[col_pn]]) else 0,
+          na.rm = TRUE)
+        resultado[[paste0("lista_", rango)]] <- sum(
+          if (col_lh %in% colnames(fila)) as.numeric(fila[[col_lh]]) else 0,
+          if (col_lm %in% colnames(fila)) as.numeric(fila[[col_lm]]) else 0,
+          if (col_ln %in% colnames(fila)) as.numeric(fila[[col_ln]]) else 0,
+          na.rm = TRUE)
+      }
+      resultado$padron_total <- sum(unlist(resultado[paste0("padron_", ORDEN_EDAD_LOCAL)]), na.rm = TRUE)
+      resultado$lista_total  <- sum(unlist(resultado[paste0("lista_",  ORDEN_EDAD_LOCAL)]), na.rm = TRUE)
+      as.data.frame(resultado, stringsAsFactors = FALSE)
+    }
+    filas_serie <- list()
+    n_ok <- 0L; n_err <- 0L
+    
+    cargar_loop <- function() {
+      for (f in fechas) {
+        fecha_d <- as.Date(f, origin = "1970-01-01")
+        df_raw  <- tryCatch({
+          res <- cargar_lne(tipo_corte = "semanal", fecha = fecha_d,
+                            dimension = "edad",
+                            estado     = filtros$entidad,
+                            distrito   = filtros$distrito,
+                            municipio  = filtros$municipio,
+                            seccion    = filtros$seccion,
+                            incluir_extranjero = TRUE)
+          if (!is.null(res) && !is.null(res$datos)) res$datos else NULL
+        }, error = function(e) NULL)
+        
+        fila <- construir_fila_filtrada(df_raw, fecha_d)
+        if (!is.null(fila)) {
+          filas_serie[[length(filas_serie) + 1]] <<- fila
+          n_ok <<- n_ok + 1L
+        } else {
+          n_err <<- n_err + 1L
+        }
+      }
+    }
+    
+    shiny::withProgress(
+      message = "Cargando datos semanales...",
+      value   = NULL,
+      cargar_loop()
+    )
+    
+    if (length(filas_serie) == 0) {
+      message("⚠️ [serie_edad_efectiva] Sin datos para filtros geográficos")
+      return(NULL)
+    }
+    
+    serie <- do.call(rbind, filas_serie)
+    serie <- serie[order(serie$fecha), ]
+    rownames(serie) <- NULL
+    message("✅ [serie_edad_efectiva] ", nrow(serie), " semanas (OK=", n_ok,
+            " ERR=", n_err, ") — ", filtros$entidad)
+    return(serie)
+  })
   
   # ══════════════════════════════════════════════════════════════════════════
   # E1 — WIDGET: selector de rangos + botones Restablecer y Metodología
@@ -308,7 +508,7 @@ graficas_semanal_edad <- function(input, output, session,
     anio    <- anio_semanal()
     etiq    <- etiq_ambito(ambito)
     
-    serie <- datos_semanal_serie_edad()
+    serie <- datos_serie_edad_efectiva()
     if (is.null(serie) || nrow(serie) < 2) {
       return(plot_vacio("Sin datos de serie temporal para proyección"))
     }
@@ -522,7 +722,7 @@ graficas_semanal_edad <- function(input, output, session,
       rangos      <- GRUPOS_ETARIOS[[i]]
       etiq_rangos <- sapply(rangos, etiqueta_edad)
       filas       <- df_rango[df_rango$grupo %in% etiq_rangos, ]
-      lne         <- sum(filas$lista_hombres + filas$lista_mujeres, na.rm = TRUE)
+      lne         <- sum(filas$lista_hombres + filas$lista_mujeres + filas$lista_no_binario, na.rm = TRUE)
       data.frame(grupo = nombres_grupos[i], lne = lne,
                  color = colores_grupos[i], stringsAsFactors = FALSE)
     }))
@@ -793,7 +993,7 @@ graficas_semanal_edad <- function(input, output, session,
     anio    <- anio_semanal()
     etiq    <- etiq_ambito(ambito)
     
-    serie <- datos_semanal_serie_edad()
+    serie <- datos_serie_edad_efectiva()
     if (is.null(serie) || nrow(serie) < 2)
       return(plot_vacio("Sin datos de serie temporal para proyección"))
     
@@ -946,8 +1146,8 @@ graficas_semanal_edad <- function(input, output, session,
     df <- construir_df_edad(datos, ambito)
     if (is.null(df) || nrow(df) == 0) return(plot_vacio("Sin datos de edad"))
     
-    df$padron_total <- df$padron_hombres + df$padron_mujeres
-    df$lista_total  <- df$lista_hombres  + df$lista_mujeres
+    df$padron_total <- df$padron_hombres + df$padron_mujeres + df$padron_no_binario
+    df$lista_total  <- df$lista_hombres  + df$lista_mujeres  + df$lista_no_binario
     
     col_pad <- color_total_pad(ambito)
     col_lne <- color_total_lne(ambito)
@@ -988,9 +1188,9 @@ graficas_semanal_edad <- function(input, output, session,
       ignoreNULL = FALSE, ignoreInit = FALSE
     )
   
-  message("✅ graficas_semanal_edad v1.7 inicializado")
-  message("   E1: evolución/proyección por rango de edad (12 rangos, widget 2 filas)")
+  message("✅ graficas_semanal_edad v1.8 inicializado")
+  message("   E1: evolución/proyección por rango de edad — responde a filtros geográficos")
   message("   E2: LNE por grupos etarios (barras horizontales)")
-  message("   E3: evolución/proyección por grupo etario (3 grupos, widget fila única)")
+  message("   E3: evolución/proyección por grupo etario — responde a filtros geográficos")
   message("   E4: Padrón y LNE por rango individual (barras agrupadas)")
 }

@@ -1,25 +1,37 @@
 # modules/lista_nominal_graficas/graficas_semanal_data_loaders.R
-# Versión: 2.1 — Agrega datos_semanal_serie_origen() para proyección O2
+# Versión: 3.8 — Fix definitivo: Nacional=suma secciones; Extranjero=suma 32 EXT
 #
-# CAMBIOS vs v1.2 (v2.0):
-#   - Agrega datos_semanal_serie_edad(): serie temporal con un punto por semana,
-#     columnas de padrón y LNE por cada uno de los 12 rangos de edad (sin distinción
-#     de sexo) + totales. Usado por Gráfica E1.
-#   - Agrega datos_semanal_serie_sexo(): serie temporal con padrón/LNE por sexo
-#     (hombres, mujeres, no_binario). Usado por Gráfica S7.
-#   - Ambas series se cargan al primer acceso y se cachean en LNE_CACHE_SEMANAL
-#     (claves 'serie_edad' y 'serie_sexo') por 24h.
-#   - La serie siempre refleja el TOTAL nacional o extranjero (no aplica filtros
-#     geográficos del usuario), consistente con graficas_historico_1_2.R.
-#   - Sin cambios en datos_semanal_edad/sexo/origen ni en la interfaz de retorno
-#     (se agregan dos entradas al list de retorno).
+# CAMBIOS vs v3.0:
+#   - extraer_fila_agregada(): corregido bug donde filas de RESIDENTES EXTRANJERO
+#     con nombre_entidad = nombre de la entidad (no el texto especial) se incluían
+#     en la suma nacional/estatal. Ahora se excluyen también por firma estructural:
+#     cve_distrito=0, cve_municipio=0, seccion=0 (y no es TOTALES).
+#     Esto eliminaba ~81k electores fantasma en consultas por entidad (ej. CDMX)
+#     y causaba desfase entre E1/E3 y el DataTable/E2/E4.
+#   - Para ámbito "extranjero": se agrega detección por firma si no hay texto explícito.
+#   - Resto sin cambios vs v3.0.
+#
+# CAMBIOS vs v2.1:
+#   - PRE-CARGA EN BACKGROUND: las 3 series (edad, sexo, origen) se inician
+#     silenciosamente mediante later::later() con retardo escalonado (3s / 5s / 7s)
+#     mientras el usuario está en la vista Histórico (1-3 min típicos).
+#     Al cambiar a Semanal o cambiar de desglose, los datos ya están en caché
+#     → carga instantánea (cero espera).
+#   - SPINNER SIMPLE: si el usuario llega a un desglose antes de que su serie
+#     termine de pre-cargarse, el reactive espera con un withProgress de mensaje
+#     fijo ("Cargando datos semanales...") sin detalle incremental.
+#   - FIX FECHAS FUTURAS: obtener_todas_fechas_semanal() filtra fechas > Sys.Date()
+#     para evitar intentos de descarga de archivos aún no publicados en Firebase
+#     (404s silenciosos que consumían tiempo en el loop).
+#   - Sin cambios en: corte único (datos_semanal_edad/sexo/origen), helpers de
+#     agregación, fecha_semanal_efectiva, anio_semanal, ni interfaz de retorno.
 
 graficas_semanal_data_loaders <- function(input, output, session,
                                           estado_app,
                                           filtros_usuario,
                                           ambito_reactivo) {
   
-  message("📥 Inicializando graficas_semanal_data_loaders v2.0")
+  message("📥 Inicializando graficas_semanal_data_loaders v3.0")
   
   # ══════════════════════════════════════════════════════════════════════════
   # CONSTANTES
@@ -30,6 +42,9 @@ graficas_semanal_data_loaders <- function(input, output, session,
   
   # ══════════════════════════════════════════════════════════════════════════
   # CACHÉ GLOBAL
+  # Claves de series: serie_edad_nacional, serie_edad_extranjero,
+  #                   serie_sexo_nacional, serie_sexo_extranjero,
+  #                   serie_origen_nacional, serie_origen_extranjero
   # ══════════════════════════════════════════════════════════════════════════
   
   if (!exists("LNE_CACHE_SEMANAL", envir = .GlobalEnv)) {
@@ -37,22 +52,29 @@ graficas_semanal_data_loaders <- function(input, output, session,
            list(edad       = NULL,
                 sexo       = NULL,
                 origen     = NULL,
-                serie_edad = NULL,
-                serie_sexo = NULL,
+                serie_edad_nacional    = NULL,
+                serie_edad_extranjero  = NULL,
+                serie_sexo_nacional    = NULL,
+                serie_sexo_extranjero  = NULL,
+                serie_origen_nacional  = NULL,
+                serie_origen_extranjero = NULL,
                 fecha      = NULL,
                 timestamp  = NULL),
            envir = .GlobalEnv)
-    message("📦 Caché semanal inicializado (v2.0)")
+    message("📦 Caché semanal inicializado (v3.0)")
   } else {
-    # Asegurar que las claves nuevas existan si el caché fue creado por v1.x
+    # Asegurar que las claves nuevas existan si el caché fue creado por v<3.0
     cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
-    if (is.null(cache$serie_edad)) cache$serie_edad <- NULL
-    if (is.null(cache$serie_sexo)) cache$serie_sexo <- NULL
+    for (clave in c("serie_edad_nacional","serie_edad_extranjero",
+                    "serie_sexo_nacional","serie_sexo_extranjero",
+                    "serie_origen_nacional","serie_origen_extranjero")) {
+      if (is.null(cache[[clave]])) cache[[clave]] <- NULL
+    }
     assign("LNE_CACHE_SEMANAL", cache, envir = .GlobalEnv)
   }
   
   # ══════════════════════════════════════════════════════════════════════════
-  # HELPERS — sin cambios vs v1.2
+  # HELPERS
   # ══════════════════════════════════════════════════════════════════════════
   
   cache_semanal_valido <- function(fecha_requerida) {
@@ -62,7 +84,6 @@ graficas_semanal_data_loaders <- function(input, output, session,
     difftime(Sys.time(), cache$timestamp, units = "hours") < 24
   }
   
-  # Caché de serie: no depende de fecha de corte, solo de antigüedad
   cache_serie_valido <- function(clave) {
     cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
     if (is.null(cache[[clave]]) || is.null(cache$timestamp)) return(FALSE)
@@ -76,11 +97,15 @@ graficas_semanal_data_loaders <- function(input, output, session,
     as.Date(max(catalog$semanal_comun), origin = "1970-01-01")
   }
   
+  # ✅ v3.0 FIX: filtra fechas futuras para evitar 404s en Firebase
   obtener_todas_fechas_semanal <- function() {
     if (!exists("LNE_CATALOG", envir = .GlobalEnv)) return(NULL)
     catalog <- get("LNE_CATALOG", envir = .GlobalEnv)
     if (length(catalog$semanal_comun) == 0) return(NULL)
-    sort(as.Date(catalog$semanal_comun, origin = "1970-01-01"))
+    fechas <- sort(as.Date(catalog$semanal_comun, origin = "1970-01-01"))
+    fechas <- fechas[fechas <= Sys.Date()]   # ← fix: no intentar fechas futuras
+    if (length(fechas) == 0) return(NULL)
+    fechas
   }
   
   es_nacional_sin_filtros <- function(f) {
@@ -88,6 +113,9 @@ graficas_semanal_data_loaders <- function(input, output, session,
       (is.null(f$seccion) || "Todas" %in% f$seccion || length(f$seccion) == 0)
   }
   
+  # Devuelve list(datos=df, totales=list_o_NULL)
+  # totales viene de cargar_lne()$totales — fila TOTALES del CSV ya procesada,
+  # que cargar_lne() extrae y normaliza antes de devolver el df sin esa fila.
   cargar_tipo_semanal <- function(fecha, tipo, filtros) {
     tryCatch({
       res <- cargar_lne(tipo_corte = "semanal", fecha = fecha, dimension = tipo,
@@ -96,7 +124,9 @@ graficas_semanal_data_loaders <- function(input, output, session,
                         municipio  = filtros$municipio %||% "Todos",
                         seccion    = filtros$seccion   %||% "Todas",
                         incluir_extranjero = TRUE)
-      if (!is.null(res) && !is.null(res$datos) && nrow(res$datos) > 0) return(res$datos)
+      if (!is.null(res) && !is.null(res$datos) && nrow(res$datos) > 0) {
+        return(list(datos = res$datos, totales = res$totales))
+      }
       return(NULL)
     }, error = function(e) {
       message("❌ Error semanal/", tipo, " (", format(fecha, "%Y%m%d"), "): ", e$message)
@@ -108,57 +138,57 @@ graficas_semanal_data_loaders <- function(input, output, session,
                           municipio = "Todos",  seccion  = "Todas")
   
   # ══════════════════════════════════════════════════════════════════════════
-  # HELPERS DE AGREGACIÓN PARA LA SERIE — NUEVOS EN v2.0
+  # HELPERS DE AGREGACIÓN
   # ══════════════════════════════════════════════════════════════════════════
   
-  # Extrae el total nacional de un data.frame de un corte semanal.
-  # Para "nacional": usa la fila TOTALES si existe; si no, suma todas las
-  # filas que NO sean RESIDENTES EXTRANJERO ni TOTALES.
-  # Para "extranjero": suma las 32 filas RESIDENTES EXTRANJERO.
-  extraer_fila_agregada <- function(df, ambito) {
-    if (is.null(df) || nrow(df) == 0 || !"nombre_entidad" %in% colnames(df)) return(NULL)
+  # Identificador canónico de fila RESIDENTES EXTRANJERO:
+  #   cabecera_distrital == "RESIDENTES EXTRANJERO"
+  # (independiente de nombre_entidad, que conserva el nombre del estado)
+  es_fila_extranjero <- function(df) {
+    if (!"cabecera_distrital" %in% colnames(df)) return(rep(FALSE, nrow(df)))
+    toupper(trimws(df$cabecera_distrital)) == "RESIDENTES EXTRANJERO"
+  }
+  
+  # extraer_fila_agregada(): devuelve UNA fila agregada para la serie
+  #   Nacional   → suma las secciones (sin EXT, sin TOTALES)
+  #   Extranjero → suma las 32 filas EXT
+  #
+  # NOTA: totales_norm (parámetro heredado) ya no se usa — se ignora.
+  # La lógica es siempre sumar las filas correctas del df.
+  extraer_fila_agregada <- function(df, ambito, totales_norm = NULL) {
+    if (is.null(df) || nrow(df) == 0) return(NULL)
     
-    if (ambito == "extranjero") {
-      filas <- df[grepl("RESIDENTES EXTRANJERO", toupper(df$nombre_entidad), fixed = TRUE), ]
-      if (nrow(filas) == 0) return(NULL)
-    } else {
-      # Intentar fila TOTALES primero
-      idx_tot <- which(toupper(trimws(df$nombre_entidad)) == "TOTALES")
-      if (length(idx_tot) > 0) {
-        return(df[idx_tot[1], , drop = FALSE])
-      }
-      # Si no hay TOTALES, sumar filas nacionales (excluye RESIDENTES EXTRANJERO y TOTALES)
-      filas <- df[!grepl("RESIDENTES EXTRANJERO|^TOTALES$",
-                         toupper(trimws(df$nombre_entidad))), ]
-      if (nrow(filas) == 0) return(NULL)
-    }
-    
-    # Sumar columnas numéricas
     cols_id  <- c("cve_entidad","nombre_entidad","cve_distrito","cabecera_distrital",
                   "cve_municipio","nombre_municipio","seccion")
+    
+    if (ambito == "extranjero") {
+      filas <- df[es_fila_extranjero(df), , drop = FALSE]
+    } else {
+      # Secciones nacionales: excluir EXT y fila TOTALES (cve_entidad=NA)
+      mask_excl <- es_fila_extranjero(df)
+      if ("cve_entidad" %in% colnames(df)) mask_excl <- mask_excl | is.na(df$cve_entidad)
+      filas <- df[!mask_excl, , drop = FALSE]
+    }
+    
+    if (is.null(filas) || nrow(filas) == 0) return(NULL)
+    
     cols_num <- setdiff(colnames(filas), cols_id)
     cols_num <- cols_num[sapply(filas[, cols_num, drop = FALSE], function(x)
       is.numeric(x) || suppressWarnings(!any(is.na(as.numeric(x)))))]
     
-    fila_suma <- as.data.frame(
-      lapply(filas[, cols_num, drop = FALSE], function(x)
-        sum(as.numeric(x), na.rm = TRUE)),
-      stringsAsFactors = FALSE
-    )
-    fila_suma$nombre_entidad <- if (ambito == "extranjero") "RESIDENTES EXTRANJERO" else "TOTALES"
-    fila_suma
+    ag <- as.data.frame(
+      lapply(filas[, cols_num, drop = FALSE], function(x) sum(as.numeric(x), na.rm = TRUE)),
+      stringsAsFactors = FALSE)
+    ag$nombre_entidad <- if (ambito == "extranjero") "RESIDENTES EXTRANJERO" else "SECCIONES_NAC"
+    ag
   }
-  
-  # Construye una fila de la serie de edad para una fecha dada.
-  # Devuelve: fecha + padron_total + lista_total + padron_[rango] + lista_[rango] × 12
-  construir_fila_serie_edad <- function(df, fecha, ambito) {
-    fila <- extraer_fila_agregada(df, ambito)
+  construir_fila_serie_edad <- function(df, fecha, ambito, totales_norm = NULL) {
+    fila <- extraer_fila_agregada(df, ambito, totales_norm)
     if (is.null(fila)) return(NULL)
     
     resultado <- list(fecha = fecha)
     
     for (rango in ORDEN_EDAD) {
-      # Sumar hombres + mujeres + no_binario para padrón y lista
       col_ph <- paste0("padron_", rango, "_hombres")
       col_pm <- paste0("padron_", rango, "_mujeres")
       col_pn <- paste0("padron_", rango, "_no_binario")
@@ -183,20 +213,14 @@ graficas_semanal_data_loaders <- function(input, output, session,
       resultado[[paste0("lista_",  rango)]] <- val_lst
     }
     
-    # Totales generales (suma de todos los rangos)
-    resultado$padron_total <- sum(
-      unlist(resultado[paste0("padron_", ORDEN_EDAD)]), na.rm = TRUE)
-    resultado$lista_total <- sum(
-      unlist(resultado[paste0("lista_",  ORDEN_EDAD)]), na.rm = TRUE)
+    resultado$padron_total <- sum(unlist(resultado[paste0("padron_", ORDEN_EDAD)]), na.rm = TRUE)
+    resultado$lista_total  <- sum(unlist(resultado[paste0("lista_",  ORDEN_EDAD)]), na.rm = TRUE)
     
     as.data.frame(resultado, stringsAsFactors = FALSE)
   }
   
-  # Construye una fila de la serie de sexo para una fecha dada.
-  # Devuelve: fecha + padron_hombres + padron_mujeres + padron_no_binario
-  #                  + lista_hombres  + lista_mujeres  + lista_no_binario
-  construir_fila_serie_sexo <- function(df, fecha, ambito) {
-    fila <- extraer_fila_agregada(df, ambito)
+  construir_fila_serie_sexo <- function(df, fecha, ambito, totales_norm = NULL) {
+    fila <- extraer_fila_agregada(df, ambito, totales_norm)
     if (is.null(fila)) return(NULL)
     
     get_col <- function(col) {
@@ -207,19 +231,185 @@ graficas_semanal_data_loaders <- function(input, output, session,
     }
     
     data.frame(
-      fecha              = fecha,
-      padron_hombres     = get_col("padron_hombres"),
-      padron_mujeres     = get_col("padron_mujeres"),
-      padron_no_binario  = get_col("padron_no_binario"),
-      lista_hombres      = get_col("lista_hombres"),
-      lista_mujeres      = get_col("lista_mujeres"),
-      lista_no_binario   = get_col("lista_no_binario"),
-      stringsAsFactors   = FALSE
+      fecha             = fecha,
+      padron_hombres    = get_col("padron_hombres"),
+      padron_mujeres    = get_col("padron_mujeres"),
+      padron_no_binario = get_col("padron_no_binario"),
+      lista_hombres     = get_col("lista_hombres"),
+      lista_mujeres     = get_col("lista_mujeres"),
+      lista_no_binario  = get_col("lista_no_binario"),
+      stringsAsFactors  = FALSE
     )
   }
   
   # ══════════════════════════════════════════════════════════════════════════
-  # REACTIVE: fecha_semanal_efectiva — sin cambios vs v1.2
+  # FUNCIÓN INTERNA: cargar_serie_con_progreso()
+  #
+  # Carga todas las semanas para un tipo dado (edad/sexo/origen) mostrando
+  # una barra de progreso incremental. Guarda el resultado en caché global.
+  # Retorna el data.frame de la serie o NULL si no hay datos.
+  #
+  # Parámetros:
+  #   tipo        "edad" | "sexo" | "origen"
+  #   ambito      "nacional" | "extranjero"
+  #   con_progreso TRUE = withProgress (llamada desde reactive en sesión activa)
+  #                FALSE = sin UI de progreso (pre-carga en background)
+  # ══════════════════════════════════════════════════════════════════════════
+  
+  # ══════════════════════════════════════════════════════════════════════════
+  # FUNCIÓN INTERNA: cargar_serie_con_progreso()
+  #
+  # Carga todas las semanas para un tipo dado (edad/sexo/origen).
+  # Verifica caché primero → si válido, retorno inmediato.
+  # Si hay que cargar, ejecuta el loop:
+  #   con_progreso = TRUE  → withProgress con spinner simple y mensaje fijo
+  #                          (llamada desde reactive con sesión activa)
+  #   con_progreso = FALSE → sin UI de progreso (pre-carga en background)
+  # Guarda el resultado en caché global al terminar.
+  # ══════════════════════════════════════════════════════════════════════════
+  
+  cargar_serie_con_progreso <- function(tipo, ambito, con_progreso = TRUE) {
+    
+    clave_cache <- paste0("serie_", tipo, "_", ambito)
+    
+    # Verificar caché primero → retorno inmediato si válido
+    if (cache_serie_valido(clave_cache)) {
+      cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
+      message("✅ [CACHÉ] serie_", tipo, " (", ambito, ") — ",
+              nrow(cache[[clave_cache]]), " semanas")
+      return(cache[[clave_cache]])
+    }
+    
+    fechas <- obtener_todas_fechas_semanal()
+    if (is.null(fechas) || length(fechas) == 0) {
+      message("⚠️ [serie_", tipo, "] Sin fechas disponibles")
+      return(NULL)
+    }
+    
+    n_total <- length(fechas)
+    message("📥 [serie_", tipo, "] Cargando ", n_total,
+            " semanas para ámbito=", ambito, "...")
+    
+    filas <- list()
+    n_ok  <- 0L
+    n_err <- 0L
+    
+    # Helper para construir cada fila según tipo
+    construir_fila <- switch(tipo,
+                             "edad"   = construir_fila_serie_edad,
+                             "sexo"   = construir_fila_serie_sexo,
+                             "origen" = construir_fila_serie_origen
+    )
+    
+    cargar_loop <- function() {
+      for (i in seq_along(fechas)) {
+        fecha_d <- as.Date(fechas[[i]], origin = "1970-01-01")
+        res_sem <- cargar_tipo_semanal(fecha_d, tipo, filtros_defecto)
+        if (is.null(res_sem)) { n_err <<- n_err + 1L; next }
+        # Desempaquetar: res_sem es list(datos, totales)
+        df      <- res_sem$datos
+        totales <- res_sem$totales   # lista normalizada o NULL
+        if (is.null(df)) { n_err <<- n_err + 1L; next }
+        fila <- construir_fila(df, fecha_d, ambito, totales)
+        if (!is.null(fila)) {
+          filas[[length(filas) + 1]] <<- fila
+          n_ok <<- n_ok + 1L
+        } else {
+          n_err <<- n_err + 1L
+        }
+      }
+    }
+    
+    # Spinner simple con mensaje fijo (sin detalle por semana)
+    if (con_progreso) {
+      shiny::withProgress(
+        message = "Cargando datos semanales...",
+        value   = NULL,
+        cargar_loop()
+      )
+    } else {
+      cargar_loop()
+    }
+    
+    if (length(filas) == 0) {
+      message("❌ [serie_", tipo, "] Sin datos válidos en ninguna semana")
+      return(NULL)
+    }
+    
+    serie <- if (tipo == "origen") {
+      tryCatch(
+        dplyr::bind_rows(filas),
+        error = function(e) do.call(rbind, filas)
+      )
+    } else {
+      do.call(rbind, filas)
+    }
+    
+    if (tipo == "origen") serie[is.na(serie)] <- 0
+    serie <- serie[order(serie$fecha), ]
+    rownames(serie) <- NULL
+    
+    # Guardar en caché
+    cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
+    cache[[clave_cache]] <- serie
+    cache$timestamp      <- Sys.time()
+    assign("LNE_CACHE_SEMANAL", cache, envir = .GlobalEnv)
+    
+    message("✅ [serie_", tipo, "] ", nrow(serie), " semanas (OK=", n_ok,
+            " ERR=", n_err, ")")
+    message("   Rango: ", format(min(serie$fecha), "%Y-%m-%d"),
+            " → ", format(max(serie$fecha), "%Y-%m-%d"))
+    return(serie)
+  }
+  
+  # ══════════════════════════════════════════════════════════════════════════
+  # Helper para serie de origen — igual que v2.1, necesario para construir_fila
+  # ══════════════════════════════════════════════════════════════════════════
+  
+  construir_fila_serie_origen <- function(df, fecha, ambito, totales_norm = NULL) {
+    fila <- extraer_fila_agregada(df, ambito, totales_norm)
+    if (is.null(fila)) return(NULL)
+    
+    resultado <- list(fecha = fecha)
+    
+    cols_pad <- grep("^pad_\\d{2}$|^pad8[78]$", colnames(fila),
+                     value = TRUE, ignore.case = TRUE)
+    cols_ln  <- grep("^ln_\\d{2}$|^ln8[78]$",  colnames(fila),
+                     value = TRUE, ignore.case = TRUE)
+    
+    if (length(cols_pad) == 0)
+      cols_pad <- grep("^padron_\\d{2}$|^padron_8[78]$", colnames(fila),
+                       value = TRUE, ignore.case = TRUE)
+    if (length(cols_ln) == 0)
+      cols_ln  <- grep("^lista_\\d{2}$|^lista_8[78]$|^ln_\\d", colnames(fila),
+                       value = TRUE, ignore.case = TRUE)
+    
+    for (col in cols_pad) {
+      resultado[[col]] <- as.numeric(fila[[col]])
+      if (is.na(resultado[[col]])) resultado[[col]] <- 0
+    }
+    for (col in cols_ln) {
+      resultado[[col]] <- as.numeric(fila[[col]])
+      if (is.na(resultado[[col]])) resultado[[col]] <- 0
+    }
+    
+    if (length(resultado) == 1) return(NULL)
+    as.data.frame(resultado, stringsAsFactors = FALSE)
+  }
+  
+  # ══════════════════════════════════════════════════════════════════════════
+  # ══════════════════════════════════════════════════════════════════════════
+  # CARGA BAJO DEMANDA — sin pre-carga en background
+  #
+  # Las series semanales se cargan cuando el usuario entra a la pestaña:
+  #   · datos_semanal_serie_edad   → al cambiar tipo_corte a "semanal"
+  #   · datos_semanal_serie_sexo   → al seleccionar desglose Sexo
+  #   · datos_semanal_serie_origen → al seleccionar desglose Origen
+  # Esto garantiza que Histórico esté disponible de inmediato al arrancar.
+  # ══════════════════════════════════════════════════════════════════════════
+  
+  # ══════════════════════════════════════════════════════════════════════════
+  # REACTIVE: fecha_semanal_efectiva — sin cambios vs v2.1
   # ══════════════════════════════════════════════════════════════════════════
   
   fecha_semanal_efectiva <- reactive({
@@ -254,7 +444,7 @@ graficas_semanal_data_loaders <- function(input, output, session,
   })
   
   # ══════════════════════════════════════════════════════════════════════════
-  # REACTIVES: corte único — sin cambios vs v1.2
+  # REACTIVES: corte único — sin cambios vs v2.1
   # ══════════════════════════════════════════════════════════════════════════
   
   datos_semanal_edad <- reactive({
@@ -271,7 +461,8 @@ graficas_semanal_data_loaders <- function(input, output, session,
       if (!is.null(cache$edad)) { message("✅ [CACHÉ] edad semanal"); return(cache$edad) }
     }
     message("📥 [semanal_edad] ", format(fecha, "%Y%m%d"))
-    datos <- cargar_tipo_semanal(fecha, "edad", filtros)
+    res_sem <- cargar_tipo_semanal(fecha, "edad", filtros)
+    datos <- if (!is.null(res_sem)) res_sem$datos else NULL
     if (!is.null(datos) && es_nacional_sin_filtros(filtros)) {
       cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
       cache$edad <- datos; cache$fecha <- fecha; cache$timestamp <- Sys.time()
@@ -295,7 +486,8 @@ graficas_semanal_data_loaders <- function(input, output, session,
       if (!is.null(cache$sexo)) { message("✅ [CACHÉ] sexo semanal"); return(cache$sexo) }
     }
     message("📥 [semanal_sexo] ", format(fecha, "%Y%m%d"))
-    datos <- cargar_tipo_semanal(fecha, "sexo", filtros)
+    res_sem <- cargar_tipo_semanal(fecha, "sexo", filtros)
+    datos <- if (!is.null(res_sem)) res_sem$datos else NULL
     if (!is.null(datos) && es_nacional_sin_filtros(filtros)) {
       cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
       cache$sexo <- datos; cache$fecha <- fecha; cache$timestamp <- Sys.time()
@@ -319,7 +511,8 @@ graficas_semanal_data_loaders <- function(input, output, session,
       if (!is.null(cache$origen)) { message("✅ [CACHÉ] origen semanal"); return(cache$origen) }
     }
     message("📥 [semanal_origen] ", format(fecha, "%Y%m%d"))
-    datos <- cargar_tipo_semanal(fecha, "origen", filtros)
+    res_sem <- cargar_tipo_semanal(fecha, "origen", filtros)
+    datos <- if (!is.null(res_sem)) res_sem$datos else NULL
     if (!is.null(datos) && es_nacional_sin_filtros(filtros)) {
       cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
       cache$origen <- datos; cache$fecha <- fecha; cache$timestamp <- Sys.time()
@@ -330,275 +523,43 @@ graficas_semanal_data_loaders <- function(input, output, session,
   })
   
   # ══════════════════════════════════════════════════════════════════════════
-  # REACTIVE: datos_semanal_serie_edad — NUEVO EN v2.0
+  # REACTIVES: series temporales — con spinner simple (v3.0)
   #
-  # Devuelve un data.frame con una fila por semana disponible en el catálogo:
-  #   fecha | padron_total | lista_total |
-  #   padron_[rango] | lista_[rango]  (×12 rangos, sin distinción de sexo)
-  #
-  # Siempre usa totales nacionales o extranjero según ambito_reactivo().
-  # No aplica filtros geográficos del usuario (la proyección es siempre
-  # a nivel nacional/extranjero completo).
-  # Se cachea en LNE_CACHE_SEMANAL$serie_edad por 24h.
+  # Cada reactive verifica caché primero (resultado de pre-carga en background).
+  # Si los datos ya están → retorno inmediato (cero espera).
+  # Si aún no están (usuario llegó antes de que terminara la pre-carga) →
+  # spinner simple con mensaje fijo mientras termina la carga.
   # ══════════════════════════════════════════════════════════════════════════
   
   datos_semanal_serie_edad <- reactive({
     tipo_corte_val <- input$tipo_corte %||% "historico"
     if (tipo_corte_val != "semanal") return(NULL)
-    
     ambito <- ambito_reactivo()
-    clave_cache <- paste0("serie_edad_", ambito)
-    
-    # Verificar caché
-    cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
-    if (!is.null(cache[[clave_cache]]) && !is.null(cache$timestamp) &&
-        difftime(Sys.time(), cache$timestamp, units = "hours") < 24) {
-      message("✅ [CACHÉ] serie_edad (", ambito, ") — ", nrow(cache[[clave_cache]]), " semanas")
-      return(cache[[clave_cache]])
-    }
-    
-    fechas <- obtener_todas_fechas_semanal()
-    if (is.null(fechas) || length(fechas) == 0) {
-      message("⚠️ [serie_edad] Sin fechas en el catálogo")
-      return(NULL)
-    }
-    
-    message("📥 [serie_edad] Cargando ", length(fechas), " semanas para ámbito=", ambito, "...")
-    
-    filas <- list()
-    n_ok  <- 0L
-    n_err <- 0L
-    
-    for (f in fechas) {
-      fecha_d <- as.Date(f, origin = "1970-01-01")
-      df <- cargar_tipo_semanal(fecha_d, "edad", filtros_defecto)
-      if (is.null(df)) { n_err <- n_err + 1L; next }
-      fila <- construir_fila_serie_edad(df, fecha_d, ambito)
-      if (!is.null(fila)) {
-        filas[[length(filas) + 1]] <- fila
-        n_ok <- n_ok + 1L
-      } else {
-        n_err <- n_err + 1L
-      }
-    }
-    
-    if (length(filas) == 0) {
-      message("❌ [serie_edad] Sin datos válidos en ninguna semana")
-      return(NULL)
-    }
-    
-    serie <- do.call(rbind, filas)
-    serie <- serie[order(serie$fecha), ]
-    rownames(serie) <- NULL
-    
-    # Guardar en caché
-    cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
-    cache[[clave_cache]] <- serie
-    cache$timestamp <- Sys.time()
-    assign("LNE_CACHE_SEMANAL", cache, envir = .GlobalEnv)
-    
-    message("✅ [serie_edad] ", nrow(serie), " semanas cargadas (OK=", n_ok, " ERR=", n_err, ")")
-    message("   Rango: ", format(min(serie$fecha), "%Y-%m-%d"),
-            " → ", format(max(serie$fecha), "%Y-%m-%d"))
-    return(serie)
+    cargar_serie_con_progreso("edad", ambito, con_progreso = TRUE)
   })
-  
-  # ══════════════════════════════════════════════════════════════════════════
-  # REACTIVE: datos_semanal_serie_sexo — NUEVO EN v2.0
-  #
-  # Devuelve un data.frame con una fila por semana disponible en el catálogo:
-  #   fecha | padron_hombres | padron_mujeres | padron_no_binario |
-  #           lista_hombres  | lista_mujeres  | lista_no_binario
-  #
-  # Misma lógica de caché y ámbito que datos_semanal_serie_edad.
-  # ══════════════════════════════════════════════════════════════════════════
   
   datos_semanal_serie_sexo <- reactive({
     tipo_corte_val <- input$tipo_corte %||% "historico"
     if (tipo_corte_val != "semanal") return(NULL)
-    
     ambito <- ambito_reactivo()
-    clave_cache <- paste0("serie_sexo_", ambito)
-    
-    # Verificar caché
-    cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
-    if (!is.null(cache[[clave_cache]]) && !is.null(cache$timestamp) &&
-        difftime(Sys.time(), cache$timestamp, units = "hours") < 24) {
-      message("✅ [CACHÉ] serie_sexo (", ambito, ") — ", nrow(cache[[clave_cache]]), " semanas")
-      return(cache[[clave_cache]])
-    }
-    
-    fechas <- obtener_todas_fechas_semanal()
-    if (is.null(fechas) || length(fechas) == 0) {
-      message("⚠️ [serie_sexo] Sin fechas en el catálogo")
-      return(NULL)
-    }
-    
-    message("📥 [serie_sexo] Cargando ", length(fechas), " semanas para ámbito=", ambito, "...")
-    
-    filas <- list()
-    n_ok  <- 0L
-    n_err <- 0L
-    
-    for (f in fechas) {
-      fecha_d <- as.Date(f, origin = "1970-01-01")
-      df <- cargar_tipo_semanal(fecha_d, "sexo", filtros_defecto)
-      if (is.null(df)) { n_err <- n_err + 1L; next }
-      fila <- construir_fila_serie_sexo(df, fecha_d, ambito)
-      if (!is.null(fila)) {
-        filas[[length(filas) + 1]] <- fila
-        n_ok <- n_ok + 1L
-      } else {
-        n_err <- n_err + 1L
-      }
-    }
-    
-    if (length(filas) == 0) {
-      message("❌ [serie_sexo] Sin datos válidos en ninguna semana")
-      return(NULL)
-    }
-    
-    serie <- do.call(rbind, filas)
-    serie <- serie[order(serie$fecha), ]
-    rownames(serie) <- NULL
-    
-    # Guardar en caché
-    cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
-    cache[[clave_cache]] <- serie
-    cache$timestamp <- Sys.time()
-    assign("LNE_CACHE_SEMANAL", cache, envir = .GlobalEnv)
-    
-    message("✅ [serie_sexo] ", nrow(serie), " semanas cargadas (OK=", n_ok, " ERR=", n_err, ")")
-    message("   Rango: ", format(min(serie$fecha), "%Y-%m-%d"),
-            " → ", format(max(serie$fecha), "%Y-%m-%d"))
-    return(serie)
+    cargar_serie_con_progreso("sexo", ambito, con_progreso = TRUE)
   })
-  
-  # ══════════════════════════════════════════════════════════════════════════
-  # REACTIVE: datos_semanal_serie_origen — NUEVO EN v2.1
-  #
-  # Devuelve un data.frame con una fila por semana disponible en el catálogo:
-  #   fecha | pad_01..pad_32 | pad87 | pad88 |
-  #           ln_01..ln_32   | ln87  | ln88
-  #
-  # Cada columna representa el total de padrón o LNE cuyo estado de origen
-  # corresponde a esa clave (34 orígenes posibles: 32 entidades + 87 + 88).
-  # Siempre usa totales nacionales o extranjero según ambito_reactivo().
-  # Se cachea en LNE_CACHE_SEMANAL con clave 'serie_origen_[ambito]' por 24h.
-  # ══════════════════════════════════════════════════════════════════════════
-  
-  # Helper: construye una fila de la serie de origen para una fecha dada.
-  # Detecta automáticamente los patrones de columna pad_NN / ln_NN presentes.
-  construir_fila_serie_origen <- function(df, fecha, ambito) {
-    fila <- extraer_fila_agregada(df, ambito)
-    if (is.null(fila)) return(NULL)
-    
-    resultado <- list(fecha = fecha)
-    
-    # Detectar columnas pad y ln presentes (pad_01..pad_32, pad87, pad88)
-    cols_pad <- grep("^pad_\\d{2}$|^pad8[78]$", colnames(fila),
-                     value = TRUE, ignore.case = TRUE)
-    cols_ln  <- grep("^ln_\\d{2}$|^ln8[78]$",  colnames(fila),
-                     value = TRUE, ignore.case = TRUE)
-    
-    # Fallback: patrón alternativo si los anteriores no encuentran nada
-    if (length(cols_pad) == 0)
-      cols_pad <- grep("^padron_\\d{2}$|^padron_8[78]$", colnames(fila),
-                       value = TRUE, ignore.case = TRUE)
-    if (length(cols_ln) == 0)
-      cols_ln  <- grep("^lista_\\d{2}$|^lista_8[78]$|^ln_\\d",  colnames(fila),
-                       value = TRUE, ignore.case = TRUE)
-    
-    for (col in cols_pad) {
-      resultado[[col]] <- as.numeric(fila[[col]])
-      if (is.na(resultado[[col]])) resultado[[col]] <- 0
-    }
-    for (col in cols_ln) {
-      resultado[[col]] <- as.numeric(fila[[col]])
-      if (is.na(resultado[[col]])) resultado[[col]] <- 0
-    }
-    
-    if (length(resultado) == 1) return(NULL)   # solo fecha, sin columnas útiles
-    as.data.frame(resultado, stringsAsFactors = FALSE)
-  }
   
   datos_semanal_serie_origen <- reactive({
     tipo_corte_val <- input$tipo_corte %||% "historico"
     if (tipo_corte_val != "semanal") return(NULL)
-    
-    ambito      <- ambito_reactivo()
-    clave_cache <- paste0("serie_origen_", ambito)
-    
-    # Verificar caché
-    cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
-    if (!is.null(cache[[clave_cache]]) && !is.null(cache$timestamp) &&
-        difftime(Sys.time(), cache$timestamp, units = "hours") < 24) {
-      message("✅ [CACHÉ] serie_origen (", ambito, ") — ",
-              nrow(cache[[clave_cache]]), " semanas")
-      return(cache[[clave_cache]])
-    }
-    
-    fechas <- obtener_todas_fechas_semanal()
-    if (is.null(fechas) || length(fechas) == 0) {
-      message("⚠️ [serie_origen] Sin fechas en el catálogo")
-      return(NULL)
-    }
-    
-    message("📥 [serie_origen] Cargando ", length(fechas),
-            " semanas para ámbito=", ambito, "...")
-    
-    filas <- list()
-    n_ok  <- 0L
-    n_err <- 0L
-    
-    for (f in fechas) {
-      fecha_d <- as.Date(f, origin = "1970-01-01")
-      df <- cargar_tipo_semanal(fecha_d, "origen", filtros_defecto)
-      if (is.null(df)) { n_err <- n_err + 1L; next }
-      fila <- construir_fila_serie_origen(df, fecha_d, ambito)
-      if (!is.null(fila)) {
-        filas[[length(filas) + 1]] <- fila
-        n_ok <- n_ok + 1L
-      } else {
-        n_err <- n_err + 1L
-      }
-    }
-    
-    if (length(filas) == 0) {
-      message("❌ [serie_origen] Sin datos válidos en ninguna semana")
-      return(NULL)
-    }
-    
-    # rbind con fill para tolerar semanas con columnas distintas
-    serie <- tryCatch(
-      dplyr::bind_rows(filas),
-      error = function(e) do.call(rbind, filas)
-    )
-    serie[is.na(serie)] <- 0
-    serie <- serie[order(serie$fecha), ]
-    rownames(serie) <- NULL
-    
-    # Guardar en caché
-    cache <- get("LNE_CACHE_SEMANAL", envir = .GlobalEnv)
-    cache[[clave_cache]] <- serie
-    cache$timestamp      <- Sys.time()
-    assign("LNE_CACHE_SEMANAL", cache, envir = .GlobalEnv)
-    
-    message("✅ [serie_origen] ", nrow(serie), " semanas cargadas (OK=",
-            n_ok, " ERR=", n_err, ")")
-    message("   Rango: ", format(min(serie$fecha), "%Y-%m-%d"),
-            " → ", format(max(serie$fecha), "%Y-%m-%d"))
-    return(serie)
+    ambito <- ambito_reactivo()
+    cargar_serie_con_progreso("origen", ambito, con_progreso = TRUE)
   })
   
   # ══════════════════════════════════════════════════════════════════════════
-  # RETORNO — versión 2.1: agrega datos_semanal_serie_origen
+  # RETORNO — v3.0: misma interfaz que v2.1, sin cambios para compatibilidad
   # ══════════════════════════════════════════════════════════════════════════
   
-  message("✅ graficas_semanal_data_loaders v2.1 inicializado")
-  message("   ✅ Nuevos v2.0: datos_semanal_serie_edad(), datos_semanal_serie_sexo()")
-  message("   ✅ Nuevo  v2.1: datos_semanal_serie_origen()")
-  message("   ✅ Sin cambios en: datos_semanal_edad/sexo/origen, fecha_semanal_efectiva, anio_semanal")
+  message("✅ graficas_semanal_data_loaders v3.5 inicializado")
+  message("   ✅ Carga bajo demanda: edad al entrar Semanal, sexo/origen al seleccionarlos")
+  message("   ✅ Histórico disponible de inmediato — sin bloqueo de Firebase al arrancar")
+  message("   ✅ Caché LNE_CACHE_SEMANAL evita recargas en sesiones sucesivas")
   
   return(list(
     datos_semanal_edad          = datos_semanal_edad,
@@ -606,7 +567,7 @@ graficas_semanal_data_loaders <- function(input, output, session,
     datos_semanal_origen        = datos_semanal_origen,
     datos_semanal_serie_edad    = datos_semanal_serie_edad,
     datos_semanal_serie_sexo    = datos_semanal_serie_sexo,
-    datos_semanal_serie_origen  = datos_semanal_serie_origen,  # NUEVO v2.1
+    datos_semanal_serie_origen  = datos_semanal_serie_origen,
     fecha_semanal_efectiva      = fecha_semanal_efectiva,
     anio_semanal                = anio_semanal
   ))

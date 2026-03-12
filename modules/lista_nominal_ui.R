@@ -1,13 +1,12 @@
 # modules/lista_nominal_ui.R
-# Versión: 3.6 - Fase 1a: Desglose reposicionado como filtro principal en semanal
+# Versión: 3.7 — Ocultar main-table_data en vista semanal
 #
-# CAMBIOS vs v3.5:
-#   - selector_desglose movido DESPUÉS de "Año" y ANTES de "Entidad"
-#   - Solo visible cuando tipo_corte == 'semanal' (conditionalPanel)
-#   - Default del desglose: "Rango de Edad" (definido en servidor)
-#   - Eliminado el bloque de desglose duplicado que estaba al final del sidebar
-#   - Orden del sidebar para semanal:
-#       Tipo de datos → Ámbito → Año → [Desglose] → Entidad → Distrito → Municipio → Sección
+# CAMBIOS vs v3.6:
+#   - main-table_data y su encabezado (main-table_header) se envuelven en
+#     conditionalPanel que los oculta cuando tipo_corte == 'semanal'.
+#   - En semanal, la tabla de datos es propia de cada desglose (semanal_dt_edad,
+#     semanal_dt_sexo, semanal_dt_origen) renderizada dentro de graficas_dinamicas.
+#   - Sin otros cambios funcionales.
 
 lista_nominal_ui <- function(id) {
   ns <- NS(id)
@@ -111,24 +110,28 @@ lista_nominal_ui <- function(id) {
         # ── Gráficas (historico y semanal via graficas_ui_render.R) ───────────
         uiOutput(ns("graficas_dinamicas")),
         
-        # ── DataTable ─────────────────────────────────────────────────────────
-        fluidRow(
-          column(12, 
-                 div(
-                   class = "datatable-section",
-                   h3("Tabla de Datos", 
-                      align = "center", 
-                      style = "margin-top:40px;",
-                      class = "datatable-title"),
-                   div(class = "datatable-header",
-                       uiOutput(ns("main-table_header"))),
-                   shinycssloaders::withSpinner(
-                     DTOutput(ns("main-table_data")),
-                     type  = 6,
-                     color = "#44559B",
-                     size  = 0.8
+        # ── DataTable histórica: oculta en semanal ────────────────────────────
+        conditionalPanel(
+          condition = "input.tipo_corte != 'semanal'",
+          ns = ns,
+          fluidRow(
+            column(12, 
+                   div(
+                     class = "datatable-section",
+                     h3("Tabla de Datos", 
+                        align = "center", 
+                        style = "margin-top:40px;",
+                        class = "datatable-title"),
+                     div(class = "datatable-header",
+                         uiOutput(ns("main-table_header"))),
+                     shinycssloaders::withSpinner(
+                       DTOutput(ns("main-table_data")),
+                       type  = 6,
+                       color = "#44559B",
+                       size  = 0.8
+                     )
                    )
-                 )
+            )
           )
         ),
         

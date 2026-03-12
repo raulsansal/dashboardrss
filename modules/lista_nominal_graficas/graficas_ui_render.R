@@ -1,18 +1,15 @@
 # modules/lista_nominal_graficas/graficas_ui_render.R
 # Renderizado dinámico de UI para gráficas históricas Y semanales
-# Versión: 2.11 — Fuente como div HTML estático en E1/E3/E4 (evita solapamiento con leyenda)
+# Versión: 2.12 — Tabla semanal_dt_edad con estilo histórico (header + descarga azul)
 #
-# CAMBIOS vs v2.10:
-#   ui_seccion_edad(): agrega div fuente estático debajo de plotlyOutput en E1, E3 y E4
-#     La fuente ya no es anotación Plotly; queda siempre debajo de leyenda dinámica
-#
-# CAMBIOS vs v2.8:
-#   - ui_seccion_edad(): agrega E3 (proyección por grupo etario) entre E2 y E4
-#     E3 incluye widget semanal_e3_grupos_ui + plotly semanal_e3_proyeccion_grupos
-#     E4 (era E3): semanal_e4_barras (renombrado desde semanal_e3_barras)
-#   - ui_seccion_sexo(): sin cambios
-#   - ui_seccion_origen(): sin cambios
-#   - Vista histórica: sin cambios
+# CAMBIOS vs v2.11:
+#   ui_seccion_edad(): bloque DataTable rediseñado con estructura idéntica al histórico:
+#     - uiOutput(semanal_dt_edad_header): header con ámbito + alcance
+#     - tags$hr() separador
+#     - Título "Tabla de Datos" centrado (igual que en historico)
+#     - downloadButton azul (btn-primary) con ns() correcto → semanal_dt_edad_descarga
+#     - withSpinner sobre DT::dataTableOutput (igual que main-table_data)
+#     - dom='lfrtip' gestionado en graficas_semanal.R (Mostrar + Buscar visibles)
 
 graficas_ui_render <- function(input, output, session, estado_app,
                                mostrar_graficas_anuales,
@@ -93,24 +90,35 @@ graficas_ui_render <- function(input, output, session, estado_app,
         )
       ),
       
-      # DataTable + descarga
+      # DataTable: misma estructura que la tabla histórica (título centrado + header + descarga + DT)
       div(
-        style = "margin-top:10px;",
+        class = "datatable-section",
+        style = "margin-top:30px;",
+        # Título centrado — igual que en histórico
+        h3("Tabla de Datos",
+           align = "center",
+           style = "margin-top:0;margin-bottom:15px;",
+           class = "datatable-title"),
+        # Header: ámbito + alcance (renderizado en graficas_semanal.R)
+        div(class = "datatable-header",
+            uiOutput(ns("semanal_dt_edad_header"))),
+        # Fila: etiqueta vacía a la izquierda + botón descarga azul a la derecha
         div(
-          style = "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;",
-          tags$h5(
-            style = "margin:0;font-size:14px;color:#2c3e50;font-weight:600;",
-            icon("table"), " Detalle por Rango de Edad"
-          ),
+          style = "display:flex;justify-content:flex-end;align-items:center;margin:10px 0 6px 0;",
           downloadButton(
             ns("semanal_dt_edad_descarga"),
             label = "Descargar CSV",
             icon  = icon("download"),
-            class = "btn btn-xs btn-outline-secondary",
-            style = "font-size:11px;"
+            class = "btn btn-primary btn-sm",
+            style = "font-size:12px;padding:5px 12px;"
           )
         ),
-        DT::dataTableOutput(ns("semanal_dt_edad"))
+        shinycssloaders::withSpinner(
+          DT::dataTableOutput(ns("semanal_dt_edad")),
+          type  = 6,
+          color = "#44559B",
+          size  = 0.8
+        )
       )
     )
   }
@@ -430,7 +438,8 @@ graficas_ui_render <- function(input, output, session, estado_app,
       ignoreInit = FALSE
     )
   
-  message("✅ graficas_ui_render v2.11 inicializado")
+  message("✅ graficas_ui_render v2.12 inicializado")
+  message("   ✅ ui_seccion_edad: tabla con header ámbito+alcance, descarga azul, dom=lfrtip")
   message("   ✅ Fase 3: E1–E4 (edad), S1–S7 (sexo), O1–O2 (origen) en UI")
   message("   ✅ Vista histórica sin cambios")
 }

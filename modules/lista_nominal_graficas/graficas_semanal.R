@@ -1,13 +1,25 @@
 # modules/lista_nominal_graficas/graficas_semanal.R
 # Orquestador de la Vista Semanal
-# Versión: 3.1 — Modularización completa: origen → graficas_semanal_origen.R
+# Versión: 3.6 — Fix definitivo: Nacional=suma 71k secciones; Extranjero=suma 32 EXT
 #
-# CAMBIOS vs v3.0:
-#   - Gráficas de origen  → graficas_semanal_origen.R (O1 mapa calor, O2 proyección)
-#   - Eliminados: semanal_origen_calor y semanal_origen_barras inline
-#   - Nuevo argumento: datos_semanal_serie_origen
-#   - source() de graficas_semanal_origen.R dentro de esta función
-#   - DataTable y sidebar de origen sin cambios
+# CAMBIOS vs v3.2:
+#   - fila_ext(): ahora detecta filas de RESIDENTES EXTRANJERO también por firma
+#     estructural (cve_distrito=0, cve_municipio=0, seccion=0) cuando el campo
+#     nombre_entidad contiene el nombre de la entidad en lugar del texto especial.
+#   - df_nacional(): usa nuevo helper es_fila_extranjero() que combina detección
+#     por nombre Y por firma. Elimina el doble conteo que causaba discrepancias
+#     entre E2/E4/DataTable y E1/E3 para consultas a nivel entidad o con ámbito nacional.
+#
+# CAMBIOS vs v3.1:
+#   - datos_dt_edad_r: columnas simplificadas → Rango de Edad, Padrón Total,
+#     LNE Total, Tasa de Inclusión (%). Sin columnas de sexo (corresponden a
+#     la vista Sexo, no a Edad).
+#   - output$semanal_dt_edad: dom='lfrtip', language en español completo,
+#     formateo de miles y decimales igual al histórico.
+#   - output$semanal_dt_edad_header: nuevo renderUI con header ámbito + alcance
+#     (patrón idéntico a main-table_header del histórico).
+#   - output$semanal_dt_edad_descarga: downloadHandler movido aquí (era solo UI
+#     en graficas_ui_render.R); nombre de archivo descriptivo.
 
 graficas_semanal <- function(input, output, session,
                              datos_semanal_edad,
@@ -81,22 +93,66 @@ graficas_semanal <- function(input, output, session,
   es_historico    <- function() { tc <- input$tipo_corte %||% "historico"; tc != "semanal" }
   desglose_activo <- function() input$desglose %||% "edad"
   
-  fila_totales_nac <- function(df) {
-    if (is.null(df) || !"nombre_entidad" %in% colnames(df)) return(NULL)
-    idx <- which(toupper(trimws(df$nombre_entidad)) == "TOTALES")
-    if (length(idx) > 0) df[idx[1], ] else NULL
-  }
-  fila_ext <- function(df) {
-    if (is.null(df) || !"nombre_entidad" %in% colnames(df)) return(NULL)
-    idx <- which(grepl("RESIDENTES EXTRANJERO", toupper(df$nombre_entidad)))
-    if (length(idx) > 0) df[idx[1], ] else NULL
-  }
-  df_nacional <- function(df) {
-    if (is.null(df)) return(NULL)
-    df[!grepl("RESIDENTES EXTRANJERO|TOTALES",
-              toupper(df$nombre_entidad %||% ""), ignore.case = TRUE), ]
+  # ── HELPERS ARITMÉTICOS ────────────────────────────────────────────────────
+  #
+  # ESTRUCTURA DEL CSV (verificada contra derfe_pdln_20251016_edad.csv):
+  #
+  #   71,632 filas de secciones nacionales  → Vista Nacional
+  #      32 filas RESIDENTES EXTRANJERO     → Vista Extranjero
+  #         (cabecera_distrital == "RESIDENTES EXTRANJERO")
+  #       1 fila TOTALES (cve_entidad = NA) → solo secciones nac (NO incluye EXT)
+  #
+  #   cargar_lne() extrae y elimina la fila TOTALES de res$datos antes de devolver.
+  #   El df recibido tiene 71,664 filas: 71,632 secciones nac + 32 EXT.
+  #
+  #   NACIONAL   = sumar las 71,632 secciones (excluir EXT y TOTALES si existiera)
+  #   EXTRANJERO = sumar las 32 filas EXT
+  #
+  #   Totales correctos para 20251016:
+  #     Nacional:   Padrón=99,939,828  LNE=99,071,246
+  #     Extranjero: Padrón= 1,646,050  LNE=   769,903
+  # ────────────────────────────────────────────────────────────────────────────
+  
+  # Identificador canónico de filas EXT
+  es_fila_extranjero <- function(df) {
+    if (!"cabecera_distrital" %in% colnames(df)) return(rep(FALSE, nrow(df)))
+    toupper(trimws(df$cabecera_distrital)) == "RESIDENTES EXTRANJERO"
   }
   
+  # Las 32 filas EXT
+  filas_ext <- function(df) {
+    if (is.null(df) || nrow(df) == 0) return(NULL)
+    df[es_fila_extranjero(df), , drop = FALSE]
+  }
+  
+  # Las 71,632 secciones nacionales (sin EXT, sin fila TOTALES)
+  filas_nacionales <- function(df) {
+    if (is.null(df) || nrow(df) == 0) return(NULL)
+    mask_excl <- es_fila_extranjero(df)
+    if ("cve_entidad" %in% colnames(df)) mask_excl <- mask_excl | is.na(df$cve_entidad)
+    df[!mask_excl, , drop = FALSE]
+  }
+  
+  # Alias de compatibilidad con código heredado
+  df_nacional      <- filas_nacionales
+  fila_totales_nac <- function(df) NULL  # obsoleto
+  fila_totales_csv <- function(df) NULL  # obsoleto
+  fila_ext <- function(df) {
+    filas <- filas_ext(df)
+    if (is.null(filas) || nrow(filas) == 0) return(NULL)
+    cols_id  <- c("cve_entidad","nombre_entidad","cve_distrito","cabecera_distrital",
+                  "cve_municipio","nombre_municipio","seccion")
+    cols_num <- setdiff(colnames(filas), cols_id)
+    cols_num <- cols_num[sapply(filas[, cols_num, drop = FALSE], is.numeric)]
+    ag <- as.data.frame(
+      lapply(filas[, cols_num, drop = FALSE], function(x) sum(as.numeric(x), na.rm = TRUE)),
+      stringsAsFactors = FALSE)
+    ag$nombre_entidad <- "RESIDENTES EXTRANJERO"
+    ag$cabecera_distrital <- "RESIDENTES EXTRANJERO"
+    ag
+  }
+  
+  # Valor de un rango de edad (h+m+nb) en una fila o conjunto de filas
   sumar_rango <- function(df, grupo, sexo, tipo) {
     col <- grep(paste0("^", tipo, "_", grupo, "_", sexo, "$"),
                 colnames(df), value = TRUE, ignore.case = TRUE)
@@ -104,43 +160,45 @@ graficas_semanal <- function(input, output, session,
     sum(as.numeric(df[[col[1]]]), na.rm = TRUE)
   }
   
+  # Valor de un rango (h+m+nb sumados) en una sola fila o conjunto
+  sumar_rango_total <- function(df, grupo, tipo) {
+    sumar_rango(df, grupo, "hombres",    tipo) +
+      sumar_rango(df, grupo, "mujeres",    tipo) +
+      sumar_rango(df, grupo, "no_binario", tipo)
+  }
+  
+  # construir_df_edad(): una fila por rango con columnas h/m/nb
+  #   Nacional   → sumar las 71,632 secciones (sin EXT, sin TOTALES)
+  #   Extranjero → sumar las 32 filas EXT
   construir_df_edad <- function(df, ambito) {
     if (is.null(df) || nrow(df) == 0) return(NULL)
-    df_uso <- if (ambito == "extranjero") {
-      f <- fila_ext(df); if (is.null(f)) return(NULL); f
-    } else df_nacional(df)
-    if (is.null(df_uso) || nrow(df_uso) == 0) return(NULL)
+    filas <- if (ambito == "extranjero") filas_ext(df) else filas_nacionales(df)
+    if (is.null(filas) || nrow(filas) == 0) return(NULL)
     do.call(rbind, lapply(ORDEN_EDAD, function(g) data.frame(
-      grupo          = etiqueta_edad(g),
-      padron_hombres = sumar_rango(df_uso, g, "hombres", "padron"),
-      padron_mujeres = sumar_rango(df_uso, g, "mujeres", "padron"),
-      lista_hombres  = sumar_rango(df_uso, g, "hombres", "lista"),
-      lista_mujeres  = sumar_rango(df_uso, g, "mujeres", "lista"),
+      grupo             = etiqueta_edad(g),
+      padron_hombres    = sumar_rango(filas, g, "hombres",    "padron"),
+      padron_mujeres    = sumar_rango(filas, g, "mujeres",    "padron"),
+      padron_no_binario = sumar_rango(filas, g, "no_binario", "padron"),
+      lista_hombres     = sumar_rango(filas, g, "hombres",    "lista"),
+      lista_mujeres     = sumar_rango(filas, g, "mujeres",    "lista"),
+      lista_no_binario  = sumar_rango(filas, g, "no_binario", "lista"),
       stringsAsFactors = FALSE
     )))
   }
-  
+  # extraer_totales_sexo(): totales h/m/nb para E2-sexo y DataTable
+  #   Nacional   → sumar las 71,632 secciones (sin EXT)
+  #   Extranjero → sumar las 32 filas EXT
   extraer_totales_sexo <- function(df, ambito) {
     if (is.null(df) || nrow(df) == 0) return(NULL)
-    fila <- if (ambito == "extranjero") fila_ext(df) else fila_totales_nac(df)
-    if (is.null(fila)) {
-      df_nac    <- df_nacional(df)
-      if (is.null(df_nac) || nrow(df_nac) == 0) return(NULL)
-      cols_num  <- sapply(df_nac, is.numeric)
-      fila      <- as.data.frame(lapply(
-        df_nac[, cols_num, drop = FALSE], function(x) sum(x, na.rm = TRUE)))
-    }
     cols_sex <- c("padron_hombres","padron_mujeres","padron_no_binario",
                   "lista_hombres","lista_mujeres","lista_no_binario")
-    res <- list()
-    for (col in cols_sex) {
-      res[[col]] <- if (col %in% colnames(fila)) {
-        val <- as.numeric(fila[[col]][1]); if (is.na(val)) 0 else val
-      } else 0
-    }
-    as.data.frame(res, stringsAsFactors = FALSE)
+    filas <- if (ambito == "extranjero") filas_ext(df) else filas_nacionales(df)
+    if (is.null(filas) || nrow(filas) == 0) return(NULL)
+    cols_num <- intersect(cols_sex, colnames(filas))
+    as.data.frame(
+      lapply(filas[, cols_num, drop = FALSE], function(x) sum(as.numeric(x), na.rm = TRUE)),
+      stringsAsFactors = FALSE)
   }
-  
   NOM_ORIGEN <- c(
     "01"="AGUASCALIENTES","02"="BAJA CALIFORNIA","03"="BAJA CALIFORNIA SUR",
     "04"="CAMPECHE","05"="COAHUILA","06"="COLIMA","07"="CHIAPAS",
@@ -157,8 +215,8 @@ graficas_semanal <- function(input, output, session,
   construir_tabla_origen <- function(df, ambito) {
     if (is.null(df) || nrow(df) == 0) return(NULL)
     df_uso <- if (ambito == "extranjero")
-      df[grepl("RESIDENTES EXTRANJERO", toupper(df$nombre_entidad %||% ""),
-               ignore.case = TRUE), ]
+      # Usar identificador canónico: cabecera_distrital == "RESIDENTES EXTRANJERO"
+      df[es_fila_extranjero(df), , drop = FALSE]
     else df_nacional(df)
     if (is.null(df_uso) || nrow(df_uso) == 0) return(NULL)
     cols_pad <- grep("^pad_\\d{2}$|^pad8[78]$", colnames(df_uso),
@@ -302,36 +360,88 @@ graficas_semanal <- function(input, output, session,
     if (es_historico()) return(NULL)
     df <- construir_df_edad(datos_semanal_edad(), ambito_reactivo())
     if (is.null(df)) return(NULL)
-    df$padron_total <- df$padron_hombres + df$padron_mujeres
-    df$lista_total  <- df$lista_hombres  + df$lista_mujeres
-    df$tasa <- round(df$lista_total / df$padron_total * 100, 2)
-    colnames(df) <- c("Rango de Edad","Padrón Hombres","Padrón Mujeres",
-                      "LNE Hombres","LNE Mujeres","Padrón Total",
-                      "LNE Total","Tasa Inclusión (%)")
-    df
+    # Incluir no_binario para que los totales coincidan con E1/E3
+    nb_p <- if ("padron_no_binario" %in% colnames(df)) df$padron_no_binario else 0
+    nb_l <- if ("lista_no_binario"  %in% colnames(df)) df$lista_no_binario  else 0
+    df$padron_total <- df$padron_hombres + df$padron_mujeres + nb_p
+    df$lista_total  <- df$lista_hombres  + df$lista_mujeres  + nb_l
+    df$tasa         <- round(df$lista_total / df$padron_total * 100, 2)
+    # Solo columnas relevantes para la vista Edad (sin desglose por sexo)
+    data.frame(
+      `Rango de Edad`        = df$grupo,
+      `Padrón Total`         = df$padron_total,
+      `LNE Total`            = df$lista_total,
+      `Tasa de Inclusión (%)` = df$tasa,
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
   })
+  
+  # Header: ámbito + alcance (patrón idéntico a main-table_header histórico)
+  output$semanal_dt_edad_header <- renderUI({
+    if (es_historico() || desglose_activo() != "edad") return(NULL)
+    df <- datos_dt_edad_r()
+    if (is.null(df) || nrow(df) == 0) return(NULL)
+    ambito_display <- etiq_ambito(ambito_reactivo())
+    alcance_texto  <- isolate(texto_alcance())
+    tags$div(
+      class = "datatable-header-content",
+      style = "text-align:center;margin-bottom:15px;padding:10px;background-color:#f8f9fa;border-radius:6px;border:1px solid #e9ecef;",
+      tags$div(
+        style = "font-size:15px;font-weight:700;color:#006988;margin-bottom:5px;",
+        paste0("Ámbito: ", ambito_display)
+      ),
+      tags$div(
+        style = "font-size:12px;color:#555555;line-height:1.4;",
+        alcance_texto
+      )
+    )
+  }) %>%
+    bindEvent(
+      estado_app(), input$btn_consultar, ambito_reactivo(),
+      ignoreNULL = FALSE, ignoreInit = FALSE
+    )
+  
   output$semanal_dt_edad <- DT::renderDataTable({
     df <- datos_dt_edad_r()
     if (is.null(df))
       return(DT::datatable(data.frame(Mensaje = "Sin datos"),
                            options = list(dom = "t")))
-    DT::datatable(df, rownames = FALSE,
-                  options = list(
-                    pageLength = 15, scrollX = TRUE, dom = "tip",
-                    language = list(
-                      paginate = list(previous = "Anterior", `next` = "Siguiente"),
-                      info = "Mostrando _START_ a _END_ de _TOTAL_ registros"
-                    )
-                  )) %>%
-      DT::formatRound(c("Padrón Hombres","Padrón Mujeres","LNE Hombres",
-                        "LNE Mujeres","Padrón Total","LNE Total"), digits = 0) %>%
-      DT::formatRound("Tasa Inclusión (%)", digits = 2)
+    DT::datatable(
+      df,
+      rownames = FALSE,
+      options  = list(
+        pageLength = 15,
+        lengthMenu = list(c(10, 15, 25, -1), c("10", "15", "25", "Todos")),
+        dom        = "lfrtip",
+        autoWidth  = FALSE,
+        language   = list(
+          search     = "Buscar:",
+          lengthMenu = "Mostrar _MENU_",
+          info       = "Mostrando _START_ a _END_ de _TOTAL_",
+          infoEmpty  = "Sin registros",
+          infoFiltered = "(de _MAX_ totales)",
+          paginate   = list(
+            first    = "«",
+            last     = "»",
+            `next`   = "›",
+            previous = "‹"
+          )
+        )
+      )
+    ) %>%
+      DT::formatRound(c("Padrón Total", "LNE Total"), digits = 0) %>%
+      DT::formatRound("Tasa de Inclusión (%)", digits = 2)
   })
+  
   output$semanal_dt_edad_descarga <- downloadHandler(
-    filename = function() paste0("sefix_edad_", etiq_ambito(ambito_reactivo()),
-                                 "_", anio_semanal(), "_",
-                                 format(Sys.Date(), "%Y%m%d"), ".csv"),
-    content  = function(file) {
+    filename = function() {
+      paste0("sefix_semanal_edad_",
+             etiq_ambito(ambito_reactivo()), "_",
+             anio_semanal(), "_",
+             format(Sys.Date(), "%Y%m%d"), ".csv")
+    },
+    content = function(file) {
       df <- datos_dt_edad_r()
       if (!is.null(df)) write.csv(df, file, row.names = FALSE)
     }
@@ -563,8 +673,8 @@ graficas_semanal <- function(input, output, session,
     ))
   })
   
-  message("✅ graficas_semanal v3.0 inicializado")
-  message("   ✅ Sub-módulos: graficas_semanal_edad, graficas_semanal_sexo")
-  message("   ✅ Origen: gráficas inline (pendiente modularización Fase 4)")
-  message("   ✅ Helpers, DTs y sidebar sin cambios funcionales")
+  message("✅ graficas_semanal v3.2 inicializado")
+  message("   ✅ semanal_dt_edad: columnas simplificadas (Rango/Padrón/LNE/Tasa)")
+  message("   ✅ semanal_dt_edad: dom=lfrtip, language español, header ámbito+alcance")
+  message("   ✅ Sub-módulos: graficas_semanal_edad, graficas_semanal_sexo, graficas_semanal_origen")
 }
